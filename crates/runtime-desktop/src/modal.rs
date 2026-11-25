@@ -14,6 +14,7 @@ use std::{
    str,
    sync::{
       Arc,
+      Condvar,
       LazyLock,
       Mutex,
       OnceLock,
@@ -25,6 +26,7 @@ use std::{
          Ordering,
       },
    },
+   time::Duration,
 };
 
 use phoenix_hook::image::Image;
@@ -115,6 +117,48 @@ pub struct PageModalSpec {
    pub sections: Vec<ModalSection>,
 }
 
+/// A native `phoenix.ui.choose` / `showSheet` dialog whose answer a waiting
+/// worker thread reads.
+pub struct Choice {
+   picked: Mutex<Option<i32>>,
+   done:   Condvar,
+}
+
+impl Choice {
+   const fn new() -> Self {
+      Self {
+         picked: Mutex::new(None),
+         done:   Condvar::new(),
+      }
+   }
+
+   /// Records `index` unless the dialog already answered.
+   pub fn pick(&self, index: i32) {
+      let mut picked = self.picked.lock().unwrap_or_else(PoisonError::into_inner);
+      if picked.is_none() {
+         *picked = Some(index);
+      }
+      drop(picked);
+      self.done.notify_all();
+   }
+
+   /// Waits for the picked index, or `None` when `timeout` passes first.
+   pub fn wait(&self, timeout: Duration) -> Option<i32> {
+      let picked = self.picked.lock().unwrap_or_else(PoisonError::into_inner);
+      let (picked, _) = self
+         .done
+         .wait_timeout_while(picked, timeout, |picked| picked.is_none())
+         .unwrap_or_else(PoisonError::into_inner);
+      *picked
+   }
+}
+
+/// One button of a native choose dialog.
+pub struct ChoiceOption {
+   pub label:  String,
+   pub danger: bool,
+}
+
 #[derive(Clone)]
 struct CodeEditorModal {
    plugin:       String,
@@ -131,7 +175,22 @@ struct InstallUrlModal {
 
 #[derive(Clone)]
 enum ActiveModal {
-   Page { id: u64, spec: PageModalSpec },
+   Page {
+      id:   u64,
+      spec: PageModalSpec,
+   },
+   Choice {
+      spec:   PageModalSpec,
+      choice: Arc<Choice>,
+   },
+   CodeEditor(CodeEditorModal),
+   InstallUrl(InstallUrlModal),
+}
+
+/// The active modal copied out of the state lock for one render pass. A choose
+/// dialog draws as the page it is.
+enum Snapshot {
+   Page(PageModalSpec),
    CodeEditor(CodeEditorModal),
    InstallUrl(InstallUrlModal),
 }
@@ -587,12 +646,84 @@ unsafe extern "C" fn modal_button_callback(
 /// Opens a native GPUI modal for `phoenix.ui.openPage` and triggers a GPUI
 /// redraw immediately.
 pub fn open_page(spec: PageModalSpec) -> u64 {
+   resolve_pending_choice();
    let id = NEXT_PAGE_ID.fetch_add(1, Ordering::Relaxed);
    *ACTIVE_MODAL.lock().unwrap_or_else(PoisonError::into_inner) =
       Some(ActiveModal::Page { id, spec });
    MODAL_OPEN.store(true, Ordering::Release);
    force_redraw();
    id
+}
+
+/// Opens a native choose or sheet dialog and returns what it will answer.
+/// A `showSheet` body is a [`ModalSection::Code`]; a `choose` message is
+/// [`ModalSection::Text`]. Without resolved GPUI modal symbols the dialog
+/// cannot be drawn, so it answers -1 immediately.
+pub fn open_choice(
+   title: String,
+   body: Option<ModalSection>,
+   options: Vec<ChoiceOption>,
+) -> Arc<Choice> {
+   let choice = Arc::new(Choice::new());
+   if MODAL_SYM.get().is_none() {
+      choice.pick(-1);
+      return choice;
+   }
+   resolve_pending_choice();
+
+   let mut sections = Vec::with_capacity(2);
+   if let Some(body) = body {
+      sections.push(body);
+   }
+   if !options.is_empty() {
+      let buttons = options
+         .into_iter()
+         .enumerate()
+         .map(|(index, option)| {
+            let picked = Arc::clone(&choice);
+            ModalButton {
+               label:    option.label,
+               danger:   option.danger,
+               on_press: Arc::new(move || {
+                  picked.pick(i32::try_from(index).unwrap_or(-1));
+                  close_active();
+               }),
+            }
+         })
+         .collect();
+      sections.push(ModalSection::Buttons {
+         title: None,
+         buttons,
+      });
+   }
+   *ACTIVE_MODAL.lock().unwrap_or_else(PoisonError::into_inner) = Some(ActiveModal::Choice {
+      spec:   PageModalSpec { title, sections },
+      choice: Arc::clone(&choice),
+   });
+   MODAL_OPEN.store(true, Ordering::Release);
+   force_redraw();
+   choice
+}
+
+/// Closes `choice`'s dialog if it is still the one on screen.
+pub fn dismiss_choice(choice: &Arc<Choice>) {
+   let mut guard = ACTIVE_MODAL.lock().unwrap_or_else(PoisonError::into_inner);
+   if matches!(guard.as_ref(), Some(ActiveModal::Choice { choice: active, .. }) if Arc::ptr_eq(active, choice))
+   {
+      choice.pick(-1);
+      *guard = None;
+      MODAL_OPEN.store(false, Ordering::Release);
+      drop(guard);
+      force_redraw();
+   }
+}
+
+/// Answers any open choose dialog with -1 before it is replaced.
+fn resolve_pending_choice() {
+   let guard = ACTIVE_MODAL.lock().unwrap_or_else(PoisonError::into_inner);
+   if let Some(ActiveModal::Choice { choice, .. }) = guard.as_ref() {
+      choice.pick(-1);
+   }
 }
 
 /// Closes an open page modal if its id still matches `id`.
@@ -608,6 +739,7 @@ pub fn close_page(id: u64) {
 
 /// Opens a native GPUI multiline code editor modal for `plugin`.
 pub fn open_code_editor(plugin: String, initial_source: String) {
+   resolve_pending_choice();
    *ACTIVE_MODAL.lock().unwrap_or_else(PoisonError::into_inner) =
       Some(ActiveModal::CodeEditor(CodeEditorModal {
          plugin,
@@ -620,6 +752,7 @@ pub fn open_code_editor(plugin: String, initial_source: String) {
 
 /// Opens a native GPUI single-line URL installer modal.
 pub fn open_install_url() {
+   resolve_pending_choice();
    *ACTIVE_MODAL.lock().unwrap_or_else(PoisonError::into_inner) =
       Some(ActiveModal::InstallUrl(InstallUrlModal {
          pending_init: Some(String::new()),
@@ -631,7 +764,12 @@ pub fn open_install_url() {
 }
 
 fn close_active() {
-   *ACTIVE_MODAL.lock().unwrap_or_else(PoisonError::into_inner) = None;
+   let mut guard = ACTIVE_MODAL.lock().unwrap_or_else(PoisonError::into_inner);
+   if let Some(ActiveModal::Choice { choice, .. }) = guard.as_ref() {
+      choice.pick(-1);
+   }
+   *guard = None;
+   drop(guard);
    MODAL_OPEN.store(false, Ordering::Release);
    force_redraw();
 }
@@ -1316,15 +1454,12 @@ fn push_overlay_into(overlays: *mut RawVecAny, window: *mut c_void, app: *mut c_
          return;
       };
       match active {
-         ActiveModal::Page { id, spec } => {
-            ActiveModal::Page {
-               id:   *id,
-               spec: spec.clone(),
-            }
+         ActiveModal::Page { spec, .. } | ActiveModal::Choice { spec, .. } => {
+            Snapshot::Page(spec.clone())
          },
          ActiveModal::CodeEditor(ed) => {
             let init = ed.pending_init.take();
-            ActiveModal::CodeEditor(CodeEditorModal {
+            Snapshot::CodeEditor(CodeEditorModal {
                plugin:       ed.plugin.clone(),
                pending_init: init,
                status:       ed.status.clone(),
@@ -1332,7 +1467,7 @@ fn push_overlay_into(overlays: *mut RawVecAny, window: *mut c_void, app: *mut c_
          },
          ActiveModal::InstallUrl(inst) => {
             let init = inst.pending_init.take();
-            ActiveModal::InstallUrl(InstallUrlModal {
+            Snapshot::InstallUrl(InstallUrlModal {
                pending_init: init,
                status:       inst.status.clone(),
                busy:         inst.busy,
@@ -1353,7 +1488,7 @@ fn push_overlay_into(overlays: *mut RawVecAny, window: *mut c_void, app: *mut c_
       Option<RawDiv>,
       Vec<RawButton>,
    ) = match modal_snapshot {
-      ActiveModal::Page { spec, .. } => {
+      Snapshot::Page(spec) => {
          let body = build_page_body(msym, &spec);
          let mut footer = Vec::new();
          if let Some(close_btn) = make_modal_button(
@@ -1367,7 +1502,7 @@ fn push_overlay_into(overlays: *mut RawVecAny, window: *mut c_void, app: *mut c_
          }
          (spec.title, None, 3, body, footer)
       },
-      ActiveModal::CodeEditor(ed) => {
+      Snapshot::CodeEditor(ed) => {
          let mut body = gpui::v_stack(10.0);
          if let Some(ref mut b) = body {
             gpui::style_div(b, |s| s.length(s.at.size[0], W_FULL));
@@ -1448,7 +1583,7 @@ fn push_overlay_into(overlays: *mut RawVecAny, window: *mut c_void, app: *mut c_
             footer,
          )
       },
-      ActiveModal::InstallUrl(inst) => {
+      Snapshot::InstallUrl(inst) => {
          let mut body = gpui::v_stack(10.0);
          if let Some(ref mut b) = body {
             gpui::style_div(b, |s| s.length(s.at.size[0], W_FULL));
@@ -1556,8 +1691,8 @@ fn push_overlay_into(overlays: *mut RawVecAny, window: *mut c_void, app: *mut c_
       any.assume_init()
    };
 
-   // Build full-window scrim overlay (`position: absolute; inset: 0; flex; center;
-   // bg rgba(0,0,0,0.68)`).
+   // Build full-window scrim overlay (`position: absolute; inset: 0; flex;
+   // center; bg rgba(0,0,0,0.68)`).
    let Some(mut scrim) = gpui::raw_div() else {
       return;
    };

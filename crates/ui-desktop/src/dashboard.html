@@ -280,6 +280,7 @@
   <button data-tab="catalog">Plugin Catalog</button>
   <button data-tab="updates">Updates</button>
   <button data-tab="console">Console</button>
+  <button data-tab="dialogs">Dialogs</button>
   <div class="nav-footer">
     <div class="row">
       <span>Staff Unlock</span>
@@ -342,6 +343,48 @@
       <pre id="eval-out" class="log hidden" style="margin-top:10px"></pre>
     </div>
     <pre id="logs-out" class="log"></pre>
+  </section>
+
+  <section id="tab-dialogs" class="hidden">
+    <h1>Native Dialogs</h1>
+    <p class="sub">Open the same native GPUI choose and code-sheet dialogs plugins get, and read back the picked option.</p>
+    <div class="card">
+      <div class="settings" style="border-top:none;padding-top:0;margin-top:0">
+        <div class="setting">
+          <div class="setting-info"><div>Title</div></div>
+          <div class="setting-ctrl"><input id="dialog-title" type="text" value="Sunbird" /></div>
+        </div>
+        <div class="setting">
+          <div class="setting-info">
+            <div>Text</div>
+            <div class="meta">Message for choose, code for the sheet.</div>
+          </div>
+          <div class="setting-ctrl"><textarea id="dialog-text" rows="4"></textarea></div>
+        </div>
+        <div class="setting">
+          <div class="setting-info">
+            <div>Options</div>
+            <div class="meta">One per line. Empty opens a message-only dialog.</div>
+          </div>
+          <div class="setting-ctrl"><textarea id="dialog-options" rows="4" placeholder="Copy&#10;Open link"></textarea></div>
+        </div>
+        <div class="setting">
+          <div class="setting-info">
+            <div>Sheet code</div>
+            <div class="meta">Monospace / syntax highlighting</div>
+          </div>
+          <div class="setting-ctrl" style="align-items:center;gap:12px">
+            <label class="meta" style="display:flex;align-items:center;gap:5px"><input id="dialog-mono" type="checkbox" checked /> Mono</label>
+            <label class="meta" style="display:flex;align-items:center;gap:5px"><input id="dialog-highlight" type="checkbox" checked /> Highlight</label>
+          </div>
+        </div>
+      </div>
+      <div class="toolbar" style="margin:12px 0 0">
+        <button class="btn primary" id="dialog-choose-btn">Open choose</button>
+        <button class="btn" id="dialog-sheet-btn">Open sheet</button>
+        <span id="dialog-result" class="meta"></span>
+      </div>
+    </div>
   </section>
 </main>
 <div id="toast" class="toast"></div>
@@ -843,9 +886,33 @@ $('#eval-input').addEventListener('keydown', (e) => {
   }
 });
 
+async function openDialog(kind) {
+  const text = $('#dialog-text').value;
+  const payload = {
+    title: $('#dialog-title').value.trim(),
+    options: $('#dialog-options').value.split('\n').map((line) => line.trim()).filter(Boolean),
+    monospace: $('#dialog-mono').checked,
+    highlight: $('#dialog-highlight').checked
+  };
+  payload[kind === 'choose' ? 'message' : 'text'] = text;
+  $('#dialog-result').textContent = 'Waiting for the dialog…';
+  try {
+    const res = await api('/ui/' + kind, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
+    });
+    $('#dialog-result').textContent = res.index < 0 ? 'Dismissed' : 'Picked option ' + res.index;
+  } catch (err) {
+    $('#dialog-result').textContent = 'Failed: ' + err.message;
+  }
+}
+$('#dialog-choose-btn').onclick = () => openDialog('choose');
+$('#dialog-sheet-btn').onclick = () => openDialog('sheet');
+
 function openTabFromHash() {
   const hash = location.hash.replace(/^#/, '');
-  if (['plugins', 'catalog', 'updates', 'console'].includes(hash)) {
+  if (['plugins', 'catalog', 'updates', 'console', 'dialogs'].includes(hash)) {
     switchTab(hash);
     if (hash !== 'plugins') loadPlugins();
     return;

@@ -25,6 +25,7 @@ use std::{
       Mutex,
       PoisonError,
    },
+   time::Duration,
 };
 
 use phoenix_hook::image::Image;
@@ -59,6 +60,33 @@ use rquickjs::{
 };
 
 struct Desktop;
+
+/// A `POST /ui/choose` or `POST /ui/sheet` body.
+#[derive(serde::Deserialize)]
+struct DialogRequest {
+   title:     Option<String>,
+   message:   Option<String>,
+   text:      Option<String>,
+   monospace: Option<bool>,
+   highlight: Option<bool>,
+   options:   Option<Vec<DialogItem>>,
+}
+
+#[derive(serde::Deserialize)]
+#[serde(untagged)]
+enum DialogItem {
+   Label(String),
+   Item {
+      label:  String,
+      #[serde(default)]
+      danger: bool,
+   },
+}
+
+#[derive(serde::Serialize)]
+struct DialogAnswer {
+   index: i32,
+}
 
 /// The target and its swapped gateway registry, once [`prepare`] hooked them.
 static PREPARED: Mutex<Option<(Image<'static>, &'static GatewayRegistry)>> = Mutex::new(None);
@@ -246,11 +274,68 @@ impl Platform for Desktop {
             phoenix_ui_desktop::open_devtools();
             Some(remote::ok_json(&Done::Started))
          },
+         ("POST", "/ui/choose") => Some(dialog(&request.body, false)),
+         ("POST", "/ui/sheet") => Some(dialog(&request.body, true)),
          _ => None,
       }
    }
 
    fn routes(&self) -> &'static str {
-      ", GET /ui, POST /ui/devtools"
+      ", GET /ui, POST /ui/devtools, POST /ui/{choose,sheet}"
    }
+}
+
+/// Opens a native choose or sheet dialog for the dashboard and blocks this
+/// request's thread until it is answered.
+fn dialog(body: &[u8], sheet: bool) -> remote::Reply {
+   let Ok(request) = serde_json::from_slice::<DialogRequest>(body) else {
+      return remote::err("400 Bad Request", "expected a JSON dialog request");
+   };
+   let options = request
+      .options
+      .unwrap_or_default()
+      .into_iter()
+      .map(|item| {
+         match item {
+            DialogItem::Label(label) => {
+               modal::ChoiceOption {
+                  label,
+                  danger: false,
+               }
+            },
+            DialogItem::Item { label, danger } => modal::ChoiceOption { label, danger },
+         }
+      })
+      .collect::<Vec<_>>();
+   let content = if sheet {
+      request.text.map(|text| {
+         modal::ModalSection::Code {
+            title: None,
+            text,
+            monospace: request.monospace.unwrap_or_default(),
+            highlight: request.highlight.unwrap_or_default(),
+         }
+      })
+   } else {
+      request
+         .message
+         .map(|text| modal::ModalSection::Text { title: None, text })
+   };
+   if content.is_none() && options.is_empty() {
+      return remote::err(
+         "400 Bad Request",
+         if sheet {
+            "a sheet needs text"
+         } else {
+            "a choose dialog needs a message or options"
+         },
+      );
+   }
+   let title = request.title.unwrap_or_else(|| "Sunbird".to_owned());
+   let choice = modal::open_choice(title, content, options);
+   let index = choice.wait(Duration::from_secs(120)).unwrap_or(-1);
+   if index == -1 {
+      modal::dismiss_choice(&choice);
+   }
+   remote::ok_json(&DialogAnswer { index })
 }

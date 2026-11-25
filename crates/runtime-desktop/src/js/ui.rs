@@ -5,12 +5,15 @@
 //! on Desktop Phoenix. Remaining mobile-only UI-op slot hooks return harmless
 //! no-op removers so cross-platform plugins load cleanly without throwing.
 
-use std::sync::{
-   Arc,
-   atomic::{
-      AtomicU64,
-      Ordering,
+use std::{
+   sync::{
+      Arc,
+      atomic::{
+         AtomicU64,
+         Ordering,
+      },
    },
+   time::Duration,
 };
 
 use phoenix_runtime::{
@@ -18,6 +21,10 @@ use phoenix_runtime::{
    js::{
       Engine,
       Registry,
+      background::{
+         Settlement,
+         in_background,
+      },
    },
    store::{
       self,
@@ -675,7 +682,6 @@ pub fn desktop_ui_object<'js>(ctx: &Ctx<'js>, plugin: &str) -> rquickjs::Result<
       "onEvent",
       "onNode",
       "mount",
-      "showSheet",
       "dispatch",
       "update",
    ] {
@@ -698,18 +704,104 @@ pub fn desktop_ui_object<'js>(ctx: &Ctx<'js>, plugin: &str) -> rquickjs::Result<
    }
    ui.set(
       "choose",
-      Function::new(
-         ctx.clone(),
-         |ctx: Ctx<'js>, _options: Opt<Value<'js>>| -> rquickjs::Result<rquickjs::Promise<'js>> {
-            let (promise, _resolve, reject) = ctx.promise()?;
-            let err =
-               Exception::from_message(ctx, "phoenix.ui.choose is not yet implemented on desktop")?;
-            reject.call::<_, ()>((err,))?;
-            Ok(promise)
-         },
-      )?,
+      Function::new(ctx.clone(), |ctx: Ctx<'js>, options: Object<'js>| {
+         choose_dialog(&ctx, &options)
+      })?,
+   )?;
+   ui.set(
+      "showSheet",
+      Function::new(ctx.clone(), |ctx: Ctx<'js>, options: Object<'js>| {
+         sheet_dialog(&ctx, &options)
+      })?,
    )?;
    Ok(ui)
+}
+
+/// `phoenix.ui.choose` as a native Mana modal; the picked index, or -1 when it
+/// was dismissed.
+fn choose_dialog<'js>(
+   ctx: &Ctx<'js>,
+   options: &Object<'js>,
+) -> rquickjs::Result<rquickjs::Promise<'js>> {
+   let title = options.get::<_, Option<String>>("title")?;
+   let message = options.get::<_, Option<String>>("message")?;
+   let items = parse_choice_options(options)?;
+   if message.is_none() && items.is_empty() {
+      return Err(Exception::throw_type(
+         ctx,
+         "choose needs options or a message",
+      ));
+   }
+   let body = message.map(|text| ModalSection::Text { title: None, text });
+   let title = title.unwrap_or_else(|| "Sunbird".to_owned());
+   in_background(ctx, move || {
+      let choice = modal::open_choice(title, body, items);
+      match choice.wait(Duration::from_secs(600)) {
+         Some(index) => Settlement::Int(Ok(index)),
+         None => {
+            modal::dismiss_choice(&choice);
+            Settlement::Int(Ok(-1))
+         },
+      }
+   })
+}
+
+/// `phoenix.ui.showSheet` as a native Mana modal with the code viewer.
+fn sheet_dialog<'js>(
+   ctx: &Ctx<'js>,
+   options: &Object<'js>,
+) -> rquickjs::Result<rquickjs::Promise<'js>> {
+   let title = options.get::<_, Option<String>>("title")?;
+   let text = options.get::<_, String>("text")?;
+   let monospace = options
+      .get::<_, Option<bool>>("monospace")?
+      .unwrap_or_default();
+   let highlight = options
+      .get::<_, Option<bool>>("highlight")?
+      .unwrap_or_default();
+   let items = parse_choice_options(options)?;
+   let body = ModalSection::Code {
+      title: None,
+      text,
+      monospace,
+      highlight,
+   };
+   let title = title.unwrap_or_else(|| "Sunbird".to_owned());
+   in_background(ctx, move || {
+      let choice = modal::open_choice(title, Some(body), items);
+      match choice.wait(Duration::from_secs(600)) {
+         Some(index) => Settlement::Int(Ok(index)),
+         None => {
+            modal::dismiss_choice(&choice);
+            Settlement::Int(Ok(-1))
+         },
+      }
+   })
+}
+
+fn parse_choice_options<'js>(options: &Object<'js>) -> rquickjs::Result<Vec<modal::ChoiceOption>> {
+   Ok(options
+      .get::<_, Option<Vec<Value<'js>>>>("options")?
+      .unwrap_or_default()
+      .into_iter()
+      .filter_map(|option| {
+         if let Some(label) = option.as_string() {
+            return Some(modal::ChoiceOption {
+               label:  label.to_string().ok()?,
+               danger: false,
+            });
+         }
+         let option = option.as_object()?;
+         Some(modal::ChoiceOption {
+            label:  option.get::<_, Option<String>>("label").ok().flatten()?,
+            danger: option
+               .get::<_, Option<bool>>("danger")
+               .ok()
+               .flatten()
+               .unwrap_or_default(),
+         })
+      })
+      .collect())
 }
 
 /// Runs registered `phoenix.messages.onSend` hooks against the JSON payload
