@@ -258,6 +258,8 @@ pub fn prepare() -> Result<(), Error> {
    feature("counts", || counts::install(&image, &ix));
    feature("icons", || icons::install(&image));
    feature("composer", || composer::install(&image));
+   #[cfg(target_os = "macos")]
+   feature("composer_buttons", || composer::buttons::install(&image, &ix));
    feature("spotify", || spotify::install(&ix));
    feature("sidebar", || sidebar::install(&image, &ix));
    feature("toolbar", || toolbar::install(&image, &ix));

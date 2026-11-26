@@ -6,6 +6,8 @@ pub mod call_idle;
 #[cfg(any(target_arch = "x86_64", target_os = "macos"))]
 pub mod channel;
 #[cfg(any(target_arch = "x86_64", target_os = "macos"))]
+pub mod composer;
+#[cfg(any(target_arch = "x86_64", target_os = "macos"))]
 pub mod counts;
 #[cfg(any(target_arch = "x86_64", target_os = "macos"))]
 pub mod message;
@@ -79,6 +81,12 @@ pub const LOCATORS: &[Locator] = &[
       name:     "gpui builders",
       families: DESKTOP,
       run:      |ix| gpui::gpui(ix).map(|found| format!("{found:x?}")),
+   },
+   #[cfg(any(target_arch = "x86_64", target_os = "macos"))]
+   Locator {
+      name:     "composer buttons",
+      families: DESKTOP,
+      run:      |ix| composer::composer_buttons(ix).map(|func| format!("{func:#x}")),
    },
    Locator {
       name:     "menu submenu",
