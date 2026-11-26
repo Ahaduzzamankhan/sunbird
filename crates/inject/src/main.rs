@@ -514,15 +514,41 @@ mod windows {
          &fresh.to_string_lossy(),
          &format!("{site}/plugins/phoenix-windows-x86_64.dll"),
       ])?;
+      // `curl -f` only rejects an HTTP error, so a captive portal or a wrong
+      // deploy still writes its body here; swapping that in would leave
+      // Discord without a working DLL.
+      if !is_loader(&fresh) {
+         let _ = fs::remove_file(&fresh);
+         misstep::bail!("the downloaded phoenix.dll is not a Windows loader");
+      }
       let old = home.join("phoenix.dll.old");
       let _ = fs::remove_file(&old);
-      if dll.is_file() {
+      let replaced = if dll.is_file() {
          fs::rename(dll, &old)?;
+         true
+      } else {
+         false
+      };
+      if let Err(install) = fs::rename(&fresh, dll) {
+         // A failed swap must not leave Sunbird without a DLL: the one moved
+         // aside goes back into place, and this launch carries on with it.
+         let _ = fs::remove_file(&fresh);
+         if replaced && fs::rename(&old, dll).is_ok() {
+            return Ok(());
+         }
+         misstep::bail!("installing phoenix.dll failed: {install}");
       }
-      fs::rename(&fresh, dll)?;
       let _ = fs::remove_file(&old);
       fs::write(stamp, version)?;
       Ok(())
+   }
+
+   /// Whether `path` is a Windows PE image carrying the version marker every
+   /// loader is built with (`crates/runtime/src/update.rs`).
+   fn is_loader(path: &Path) -> bool {
+      fs::read(path).is_ok_and(|bytes| {
+         bytes.starts_with(b"MZ") && bytes.windows(16).any(|window| window == b"phoenix-version:")
+      })
    }
 
    /// Runs Windows' own `curl.exe` and returns what it printed. Only
