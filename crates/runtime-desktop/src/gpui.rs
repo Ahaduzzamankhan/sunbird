@@ -1569,6 +1569,8 @@ const DESKTOP_FULL: &[&str] = &[
    "fix-embeds",
    "platform-indicators",
    "disable-call-idle",
+   "font-changer",
+   "collapse-channels",
 ];
 
 const DESKTOP_PARTIAL: &[&str] = &["fakenitro"];
