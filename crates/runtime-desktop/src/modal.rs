@@ -1727,7 +1727,7 @@ pub fn force_redraw() {
 // Installation (`DllMain` / `crate::prepare`)
 // ---------------------------------------------------------------------------
 
-fn sret_wrap(addr: usize) -> Result<usize, &'static str> {
+pub fn sret_wrap(addr: usize) -> Result<usize, &'static str> {
    if crate::X86_CODE {
       Ok(addr)
    } else {

@@ -224,13 +224,10 @@ pub fn prepare() -> Result<(), Error> {
    critical("access_gate", open_access_gate(&image, &ix));
    open_gate_extras(&image);
    settings::install(&image, &ix);
-   // macOS falls back to a settings window and AppKit panels without them.
-   if X86_CODE {
-      critical(
-         "gpui",
-         require(gpui::located(), "GPUI builders did not decode"),
-      );
-   }
+   critical(
+      "gpui",
+      require(gpui::located(), "GPUI builders did not decode"),
+   );
    critical(
       "settings",
       require(
@@ -244,11 +241,7 @@ pub fn prepare() -> Result<(), Error> {
    modal::install(&image);
    let modal = require(modal::hooked(), "Workspace::render_overlays is not hooked");
    health::record("notices", health::Kind::Feature, modal.clone());
-   if X86_CODE {
-      critical("modal", modal);
-   } else {
-      health::record("modal", health::Kind::Feature, modal);
-   }
+   critical("modal", modal);
    feature("context_menu", || context_menu::install(&image));
    // Before accessories hooks `MessageRow::render`, whose prologue the header
    // locators check.

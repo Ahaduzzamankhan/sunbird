@@ -153,10 +153,13 @@ pub const LOCATORS: &[Locator] = &[
             "{rows:x?}, hooks {}, {}, {}",
             hookable(ix, rows.sidebar)?,
             hookable(ix, rows.selected).or_else(|err| {
-               rows
-                  .selected_via
-                  .map(|slot| format!("through {slot:#x}"))
-                  .ok_or(err)
+               match (rows.selected_via, ix.isa) {
+                  (Some(slot), _) => Ok(format!("through {slot:#x}")),
+                  (None, crate::index::Isa::Aarch64) => {
+                     Ok(format!("call {:#x} rewritten", rows.selected_call))
+                  },
+                  (None, _) => Err(err),
+               }
             })?,
             hookable(ix, rows.push)?
          ))
@@ -408,7 +411,7 @@ fn ready_parse<'ix>(ix: &'ix Index<'ix>) -> Found<Func<'ix>> {
 /// `func` with the whole instructions an x86-64 entry hook displaces there.
 /// arm64 hooks always displace four.
 #[cfg(any(target_arch = "x86_64", target_os = "macos"))]
-fn hookable(ix: &Index<'_>, func: usize) -> Found<String> {
+pub fn hookable(ix: &Index<'_>, func: usize) -> Found<String> {
    match ix.isa {
       crate::index::Isa::X86_64 { .. } => {
          crate::desktop::entry_moved(ix.image, func)
@@ -424,13 +427,21 @@ fn hookable(ix: &Index<'_>, func: usize) -> Found<String> {
 pub fn entry_hookable(ix: &Index<'_>, func: usize) -> Found<()> {
    /// The instructions an arm64 entry hook displaces.
    const DISPLACED: usize = 4;
+   /// sunhook's jump when no island is in reach, as on macOS.
+   const JUMP: usize = 20;
    /// `x16` and `x17`.
    const SCRATCH: u32 = 3 << 16;
    if ix.isa != crate::index::Isa::Aarch64 {
       return Ok(());
    }
-   let sets = ix
-      .func(func)?
+   let opened = ix.func(func)?;
+   if opened.end - opened.start < JUMP {
+      return Err(format!(
+         "{func:#x} is {} bytes, shorter than sunhook's {JUMP}-byte jump",
+         opened.end - opened.start
+      ));
+   }
+   let sets = opened
       .head(DISPLACED)
       .iter()
       .fold(0, |seen, step| seen | step.writes & SCRATCH);

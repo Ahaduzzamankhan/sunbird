@@ -202,25 +202,28 @@ pub fn settings_section(ix: &Index<'_>) -> Found<Section> {
 #[derive(Clone, Copy, Debug)]
 pub struct SidebarRows {
    /// The render, with [`settings_section`]'s arguments.
-   pub sidebar:      usize,
+   pub sidebar:       usize,
    /// `fn(page: u8) -> u8`, the page whose row is selected for the active one
    /// (a subpage's parent). The render only compares its result with its rows'
    /// pages.
-   pub selected:     usize,
+   pub selected:      usize,
    /// The pointer the render calls `selected` through, on Linux, where
    /// `selected` is too short for an entry hook.
-   pub selected_via: Option<usize>,
+   pub selected_via:  Option<usize>,
+   /// The render's call of `selected`, which macOS rewrites, calling it
+   /// directly with no room for an entry hook.
+   pub selected_call: usize,
    /// `fn(&mut Vec<Entry>, &mut Entry)`, moving the entry in.
-   pub push:         usize,
-   pub entry_size:   usize,
+   pub push:          usize,
+   pub entry_size:    usize,
    /// `fn(out, id_ptr, id_len, &SharedString, icon: u16, selected: bool,
    /// danger: bool, &closure)`, boxing the closure with Log Out's click.
-   pub row:          usize,
+   pub row:           usize,
    /// Log Out's click vtable, stored at `click_offset` after the box.
-   pub click_vtable: usize,
-   pub click_offset: usize,
+   pub click_vtable:  usize,
+   pub click_offset:  usize,
    /// Mana's gear icon, Sunbird's.
-   pub gear:         u16,
+   pub gear:          u16,
 }
 
 pub fn settings_sidebar_rows(ix: &Index<'_>, page_offset: usize) -> Found<SidebarRows> {
@@ -305,17 +308,18 @@ pub fn settings_sidebar_rows(ix: &Index<'_>, page_offset: usize) -> Found<Sideba
       .filter_map(|(at, _)| {
          steps.get(at + 1..at + 3)?.iter().find_map(|step| {
             match step.op {
-               Op::Call(target) => Some((target, call_slot(ix, step))),
+               Op::Call(target) => Some((target, call_slot(ix, step), step.at)),
                _ => None,
             }
          })
       })
       .collect::<Vec<_>>();
-   let (selected, selected_via) = one("sidebar selected-page map", &selected)?;
+   let (selected, selected_via, selected_call) = one("sidebar selected-page map", &selected)?;
    Ok(SidebarRows {
       sidebar: sidebar.start,
       selected,
       selected_via,
+      selected_call,
       push,
       entry_size,
       row,
