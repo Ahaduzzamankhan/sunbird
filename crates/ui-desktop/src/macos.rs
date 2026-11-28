@@ -26,7 +26,6 @@ use std::{
       mpsc,
    },
    thread,
-   time::Duration,
 };
 
 use crate::{
@@ -371,13 +370,6 @@ unsafe extern "C" {
       context: *mut c_void,
       work: extern "C" fn(*mut c_void),
    );
-   fn dispatch_time(when: u64, delta: i64) -> u64;
-   fn dispatch_after_f(
-      when: u64,
-      queue: *const c_void,
-      context: *mut c_void,
-      work: extern "C" fn(*mut c_void),
-   );
 }
 
 fn class(name: &CStr) -> Id {
@@ -427,16 +419,6 @@ msg_send!(send_symbol(name: Id, description: Id) -> Id);
 msg_send!(send_item(title: Id, action: Sel, key: Id) -> Id);
 msg_send!(send_tag() -> isize);
 
-mod panel;
-
-pub use panel::{
-   Action as PanelAction,
-   PanelButton,
-   PanelSection,
-   close_panel,
-   show_panel,
-};
-
 /// An autoreleased `NSString`, stripping interior NUL bytes so `AppKit` calls
 /// that reject `nil` never throw `NSInvalidArgumentException`.
 ///
@@ -472,30 +454,6 @@ fn on_main(work: impl FnOnce() + Send + 'static) {
    // back the box exactly once.
    unsafe {
       dispatch_async_f(&raw const _dispatch_main_q, Box::into_raw(work).cast(), run);
-   }
-}
-
-fn on_main_after(delay: Duration, work: impl FnOnce() + Send + 'static) {
-   const DISPATCH_TIME_NOW: u64 = 0;
-   type Work = Box<dyn FnOnce() + Send>;
-   extern "C" fn run(context: *mut c_void) {
-      // SAFETY: `context` is the `Box<Work>` `on_main_after` leaked, read back
-      // once.
-      let work = unsafe { Box::from_raw(context.cast::<Work>()) };
-      work();
-   }
-   let nanos = i64::try_from(delay.as_nanos()).unwrap_or(i64::MAX);
-   let work: Box<Work> = Box::new(Box::new(work));
-   // SAFETY: the main queue lives as long as the process, and `run` takes
-   // back the box once when the timer fires.
-   unsafe {
-      let when = dispatch_time(DISPATCH_TIME_NOW, nanos);
-      dispatch_after_f(
-         when,
-         &raw const _dispatch_main_q,
-         Box::into_raw(work).cast(),
-         run,
-      );
    }
 }
 

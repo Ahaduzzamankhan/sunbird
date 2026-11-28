@@ -22,15 +22,7 @@ use std::{
 
 #[cfg(target_os = "linux")] use linux::Host as Os;
 #[cfg(target_os = "macos")] use macos::Host as Os;
-#[cfg(target_os = "macos")]
-pub use macos::{
-   PanelAction,
-   PanelButton,
-   PanelSection,
-   close_panel,
-   redraw_windows,
-   show_panel,
-};
+#[cfg(target_os = "macos")] pub use macos::redraw_windows;
 #[cfg(windows)] use windows::Host as Os;
 
 /// Self-contained HTML/JS/CSS companion dashboard for Desktop settings,

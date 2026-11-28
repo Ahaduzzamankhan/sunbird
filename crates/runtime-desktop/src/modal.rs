@@ -180,8 +180,6 @@ pub struct PageModalSpec {
 pub struct Choice {
    picked: Mutex<Option<i32>>,
    done:   Condvar,
-   #[cfg(target_os = "macos")]
-   panel_id: OnceLock<u64>,
 }
 
 impl Choice {
@@ -189,8 +187,6 @@ impl Choice {
       Self {
          picked: Mutex::new(None),
          done:   Condvar::new(),
-         #[cfg(target_os = "macos")]
-         panel_id: OnceLock::new(),
       }
    }
 
@@ -1262,125 +1258,6 @@ unsafe extern "C" fn modal_button_callback(
 // Public API
 // ---------------------------------------------------------------------------
 
-/// macOS draws pages and dialogs as `AppKit` windows
-/// ([`phoenix_ui_desktop::show_panel`]), since Discord's GPUI modal has no
-/// arm64 locators.
-#[cfg(target_os = "macos")]
-mod panel {
-   use std::sync::Arc;
-
-   use phoenix_ui_desktop::{
-      PanelButton,
-      PanelSection,
-      close_panel,
-      show_panel,
-   };
-
-   use super::{
-      Choice,
-      ChoiceOption,
-      ModalSection,
-      PageModalSpec,
-   };
-
-   fn section(section: ModalSection) -> PanelSection {
-      match section {
-         ModalSection::Buttons { title, buttons } => {
-            PanelSection::Buttons {
-               title,
-               buttons: buttons
-                  .into_iter()
-                  .map(|button| {
-                     PanelButton {
-                        label:    button.label,
-                        danger:   button.danger,
-                        on_press: button.on_press,
-                     }
-                  })
-                  .collect(),
-            }
-         },
-         ModalSection::Text { title, text } => PanelSection::Text { title, text },
-         // `AppKit` panels have no switch, so it is a button naming the state
-         // it changes to.
-         ModalSection::Switch {
-            label,
-            checked,
-            on_toggle,
-            ..
-         } => {
-            PanelSection::Buttons {
-               title:   Some(format!("{label}: {}", if checked { "on" } else { "off" })),
-               buttons: vec![PanelButton {
-                  label:    if checked { "Turn off" } else { "Turn on" }.to_owned(),
-                  danger:   false,
-                  on_press: Arc::new(move || on_toggle(!checked)),
-               }],
-            }
-         },
-         ModalSection::Code {
-            title,
-            text,
-            monospace,
-            ..
-         } => {
-            PanelSection::Code {
-               title,
-               text,
-               monospace,
-            }
-         },
-      }
-   }
-
-   pub fn open(spec: PageModalSpec, on_close: Option<phoenix_ui_desktop::PanelAction>) -> u64 {
-      show_panel(
-         spec.title,
-         spec.sections.into_iter().map(section).collect(),
-         on_close,
-      )
-   }
-
-   /// A dialog whose buttons answer `choice` with their index and close it;
-   /// closing it any other way answers -1.
-   pub fn open_choice(
-      title: String,
-      body: Option<ModalSection>,
-      options: Vec<ChoiceOption>,
-      choice: &Arc<Choice>,
-   ) {
-      let id = Arc::new(std::sync::OnceLock::<u64>::new());
-      let mut sections: Vec<PanelSection> = body.into_iter().map(section).collect();
-      if !options.is_empty() {
-         let buttons = options
-            .into_iter()
-            .enumerate()
-            .map(|(index, option)| {
-               let (choice, id) = (Arc::clone(choice), Arc::clone(&id));
-               PanelButton {
-                  label:    option.label,
-                  danger:   option.danger,
-                  on_press: Arc::new(move || {
-                     choice.pick(i32::try_from(index).unwrap_or(-1));
-                     if let Some(&id) = id.get() {
-                        close_panel(id);
-                     }
-                  }),
-               }
-            })
-            .collect();
-         sections.push(PanelSection::Buttons {
-            title: None,
-            buttons,
-         });
-      }
-      let dismissed = Arc::clone(choice);
-      let panel_id = show_panel(title, sections, Some(Arc::new(move || dismissed.pick(-1))));
-      let _ = id.set(panel_id);
-      let _ = choice.panel_id.set(panel_id);
-   }
-}
-
 /// Opens a native GPUI modal for `phoenix.ui.openPage` and triggers a GPUI
 /// redraw immediately.
 pub fn open_page(spec: PageModalSpec) -> u64 {
@@ -1396,27 +1273,11 @@ static ON_CLOSE: Mutex<Option<(u64, OnClose)>> = Mutex::new(None);
 /// [`open_page`], running `on_close` on a worker thread when the user closes
 /// it. Only the newest page keeps its `on_close`.
 pub fn open_page_closing(spec: PageModalSpec, on_close: Option<OnClose>) -> u64 {
-   if cfg!(target_os = "macos") && ORIG_OVERLAY_RENDER.get().is_none() {
-      return open_panel(spec, on_close);
-   }
    resolve_pending_choice();
    let id = NEXT_PAGE_ID.fetch_add(1, Ordering::Relaxed);
    *ON_CLOSE.lock().unwrap_or_else(PoisonError::into_inner) = on_close.map(|run| (id, run));
    set_active(ActiveModal::Page { id, spec });
    id
-}
-
-#[cfg(target_os = "macos")]
-fn open_panel(spec: PageModalSpec, on_close: Option<OnClose>) -> u64 {
-   // `AppKit` builds the panel on the main thread right after this, which the
-   // first-launch watchdog takes as drawn.
-   MODAL_RENDERED.store(true, Ordering::Release);
-   panel::open(spec, on_close)
-}
-
-#[cfg(not(target_os = "macos"))]
-fn open_panel(_spec: PageModalSpec, _on_close: Option<OnClose>) -> u64 {
-   0
 }
 
 /// Takes page `id`'s `on_close`, if it still has one.
@@ -1437,7 +1298,7 @@ pub fn hooked() -> bool {
 
 /// Set once `Workspace::render_overlays` runs: Discord's window is drawing.
 static WINDOW_SEEN: AtomicBool = AtomicBool::new(false);
-/// Set once a modal was built into a frame (or an `AppKit` panel opened).
+/// Set once a modal was built into a frame.
 static MODAL_RENDERED: AtomicBool = AtomicBool::new(false);
 
 pub fn window_seen() -> bool {
@@ -1465,11 +1326,6 @@ pub fn open_choice(
    options: Vec<ChoiceOption>,
 ) -> Arc<Choice> {
    let choice = Arc::new(Choice::new());
-   #[cfg(target_os = "macos")]
-   if ORIG_OVERLAY_RENDER.get().is_none() {
-      panel::open_choice(title, body, options, &choice);
-      return choice;
-   }
    if ORIG_OVERLAY_RENDER.get().is_none() {
       choice.pick(-1);
       return choice;
@@ -1531,10 +1387,6 @@ pub fn ask(
 
 /// Closes `choice`'s dialog if it is still the one on screen.
 pub fn dismiss_choice(choice: &Arc<Choice>) {
-   #[cfg(target_os = "macos")]
-   if let Some(&id) = choice.panel_id.get() {
-      phoenix_ui_desktop::close_panel(id);
-   }
    finish_choice(choice, -1);
 }
 
@@ -1599,11 +1451,6 @@ pub fn replace_page(id: u64, spec: PageModalSpec) -> bool {
 
 /// Closes an open page modal if its id still matches `id`.
 pub fn close_page(id: u64) {
-   #[cfg(target_os = "macos")]
-   if ORIG_OVERLAY_RENDER.get().is_none() {
-      phoenix_ui_desktop::close_panel(id);
-      return;
-   }
    let mut guard = active_modal();
    if matches!(&guard.active, Some(ActiveModal::Page { id: cur, .. }) if *cur == id)
       && guard.close(Instant::now())
