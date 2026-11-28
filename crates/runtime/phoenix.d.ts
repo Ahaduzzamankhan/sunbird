@@ -1068,8 +1068,8 @@ declare namespace Phoenix {
   interface Fonts {
     /// Whether this Discord build's text system could be hooked.
     supported(): boolean;
-    /// Installed families by their English name, sorted. Windows only.
-    list?(): string[];
+    /// Installed families by their English name, sorted.
+    list(): string[];
     /// `main` replaces gg sans and ABC Ginto, `mono` replaces gg sans mono (code blocks).
     set(fonts: { main?: string; mono?: string }): void;
     clear(): void;

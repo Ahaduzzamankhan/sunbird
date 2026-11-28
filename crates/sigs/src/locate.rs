@@ -313,7 +313,22 @@ pub const LOCATORS: &[Locator] = &[
          ))
       },
    },
+   #[cfg(any(target_arch = "x86_64", target_os = "macos"))]
+   Locator {
+      name:     "resolve font",
+      families: DESKTOP,
+      run:      |ix| resolve_font(ix).and_then(|func| hookable(ix, func.start)),
+   },
 ];
+
+/// GPUI's `TextSystem::resolve_font(&self, font: &Font) -> FontId`, the one
+/// caller of the cold path that panics with `"failed to resolve font"`. Every
+/// font passes through it before GPUI's caches.
+pub fn resolve_font<'ix>(ix: &'ix Index<'ix>) -> Found<Func<'ix>> {
+   ix.literal(b"failed to resolve font")
+      .callers()
+      .one("resolve_font")
+}
 
 /// The `ClientAccessGate` read the runtime makes answer "no gate". The
 /// blocked page calls the `signed_in && access(..) != 2` stub, whose first

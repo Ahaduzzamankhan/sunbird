@@ -461,7 +461,6 @@ fn check(
             }),
          );
          report("composer gift", desktop::composer_gift(image).map(at));
-         report("resolve font", desktop::resolve_font(image).map(at));
          if abi == x86::Abi::Win64 {
             report(
                "channel toolbar",

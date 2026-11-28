@@ -272,8 +272,7 @@ pub fn prepare() -> Result<(), Error> {
    feature("emoji", || emoji::install(&image, &ix));
    feature("call_idle_dm", || call_idle::install_dm(&image, &ix));
    feature("call_idle_afk", || call_idle::install_guild_afk(&image, &ix));
-   #[cfg(target_arch = "x86_64")]
-   feature("gpui_font", || gpui_font::install(&image));
+   feature("gpui_font", || gpui_font::install(&image, &ix));
    feature("mana_theme", || mana_theme::install(&image, &ix));
    feature("gpui_theme", || gpui_theme::install(&image, &ix));
    feature("os_redraw", || <os::Os as os::DesktopOs>::install(&image));
