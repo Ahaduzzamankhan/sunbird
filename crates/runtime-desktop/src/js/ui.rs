@@ -1327,9 +1327,6 @@ fn add_shortcut<'js>(
    let Some(registry) = ctx.userdata::<Desktop<'js>>() else {
       return noop_handle(ctx);
    };
-   if !phoenix_ui_desktop::SHORTCUTS {
-      return noop_handle(ctx);
-   }
    let id = NEXT_SHORTCUT.fetch_add(1, Ordering::Relaxed);
    registry
       .shortcuts

@@ -221,9 +221,6 @@ pub struct Shortcut {
    pub alt:   bool,
 }
 
-/// Whether this OS reports [`Shortcut`]s.
-pub const SHORTCUTS: bool = cfg!(windows);
-
 static SHORTCUT_HANDLER: OnceLock<fn(Shortcut) -> bool> = OnceLock::new();
 
 /// Sends [`Shortcut`]s to `handler`, which returns whether it took the key so
@@ -233,7 +230,7 @@ pub fn set_shortcut_handler(handler: fn(Shortcut) -> bool) {
    let _ = SHORTCUT_HANDLER.set(handler);
 }
 
-#[cfg(windows)]
+#[cfg(any(windows, target_os = "macos"))]
 fn take_shortcut(shortcut: Shortcut) -> bool {
    SHORTCUT_HANDLER
       .get()

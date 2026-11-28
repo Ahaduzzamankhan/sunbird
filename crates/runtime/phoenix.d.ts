@@ -1562,7 +1562,8 @@ declare namespace Phoenix {
     collapseChannels?(): Remover;
     /// Runs `run` when `key` (one letter or digit) is pressed with the given modifiers while
     /// Discord is focused, and keeps the key from Discord. `ctrl` or `alt` is required.
-    /// Desktop Phoenix on Windows only; a no-op elsewhere.
+    /// Desktop Phoenix only. On macOS `ctrl` is Command and `alt` is Option. Linux and macOS
+    /// match the key by its place on a US QWERTY keyboard, whatever the layout.
     addShortcut?(options: {
       key: string;
       ctrl?: boolean;

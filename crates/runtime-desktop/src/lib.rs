@@ -276,6 +276,8 @@ pub fn prepare() -> Result<(), Error> {
    feature("mana_theme", || mana_theme::install(&image, &ix));
    feature("gpui_theme", || gpui_theme::install(&image, &ix));
    feature("os_redraw", || <os::Os as os::DesktopOs>::install(&image));
+   #[cfg(target_os = "linux")]
+   feature("shortcuts", shortcuts::linux::install);
    let registry = phoenix_runtime::hook(&image);
    critical(
       "gateway",

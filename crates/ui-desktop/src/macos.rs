@@ -19,6 +19,10 @@ use std::{
    ptr,
    sync::{
       Once,
+      atomic::{
+         AtomicUsize,
+         Ordering,
+      },
       mpsc,
    },
    thread,
@@ -626,10 +630,14 @@ const SHORTCUTS: [Shortcut; 1] = [Shortcut {
    run:       crate::open_devtools,
 }];
 
+const SHIFT: usize = 1 << 17;
+const CONTROL: usize = 1 << 18;
+const OPTION: usize = 1 << 19;
+const COMMAND: usize = 1 << 20;
 /// `NSEventModifierFlagShift | NSEventModifierFlagCommand`, and the mask of
 /// Shift, Control, Option and Command (ignoring Caps Lock and Fn).
-const COMMAND_SHIFT: usize = (1 << 17) | (1 << 20);
-const MODIFIERS: usize = (1 << 17) | (1 << 18) | (1 << 19) | (1 << 20);
+const COMMAND_SHIFT: usize = SHIFT | COMMAND;
+const MODIFIERS: usize = SHIFT | CONTROL | OPTION | COMMAND;
 
 /// An Objective-C block, laid out as the runtime reads one.
 #[repr(C)]
@@ -666,12 +674,52 @@ extern "C" fn key_down(_block: *const Block, event: Id) -> Id {
       .iter()
       .find(|shortcut| shortcut.modifiers == pressed && code == shortcut.code)
    else {
-      return event;
+      // SAFETY: as above.
+      let repeat = unsafe { send_get_bool(event, sel(c"isARepeat")) };
+      return if take_plugin_key(code, pressed, repeat) {
+         ptr::null_mut()
+      } else {
+         event
+      };
    };
    log::info!("shortcuts: key {}", shortcut.label);
    // Opening spawns a browser, which must not block the main thread.
    spawn("sunbird-shortcut", shortcut.run);
    ptr::null_mut()
+}
+
+/// Whether a plugin's `phoenix.ui.addShortcut` takes the key `code` pressed
+/// with `pressed`. Command stands in for Control, and Control itself is left
+/// to Discord. Repeats of a taken key are kept from Discord without running
+/// the plugin again.
+fn take_plugin_key(code: u16, pressed: usize, repeat: bool) -> bool {
+   /// `kVK_ANSI_*` key codes to their letter or digit, `?` for other keys.
+   const ANSI: &[u8] = b"ASDFHGZXCV?BQWERYT123465?97?80?OU?IP?LJ?K????NM";
+   static TAKEN: AtomicUsize = AtomicUsize::new(usize::MAX);
+
+   let combo = usize::from(code) | pressed;
+   if repeat {
+      return TAKEN.load(Ordering::Relaxed) == combo;
+   }
+   let Some(&key) = ANSI
+      .get(usize::from(code))
+      .filter(|key| key.is_ascii_alphanumeric())
+   else {
+      return false;
+   };
+   let shortcut = crate::Shortcut {
+      key,
+      ctrl: pressed & COMMAND != 0,
+      shift: pressed & SHIFT != 0,
+      alt: pressed & OPTION != 0,
+   };
+   let taken = pressed & CONTROL == 0
+      && (shortcut.ctrl || shortcut.alt)
+      && crate::take_shortcut(shortcut);
+   if taken {
+      TAKEN.store(combo, Ordering::Relaxed);
+   }
+   taken
 }
 
 fn start_shortcuts() {
