@@ -402,6 +402,10 @@ fn check(
             desktop::svg_builders(image).map(|svg| format!("{svg:x?}")),
          );
          report("asset loader", desktop::asset_load(image).map(at));
+         report(
+            "icon names",
+            desktop::icon_names(image).map(|names| format!("{} names", names.len())),
+         );
          let row = locate::message::message_row(ix);
          report(
             "message context menu",
