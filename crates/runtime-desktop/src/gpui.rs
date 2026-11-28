@@ -1635,6 +1635,7 @@ const DESKTOP_FULL: &[&str] = &[
    "disable-call-idle",
    "font-changer",
    "collapse-channels",
+   "desktop-themes",
 ];
 
 const DESKTOP_PARTIAL: &[&str] = &["fakenitro"];
