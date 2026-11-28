@@ -222,12 +222,16 @@ pub fn follow(
 /// Whether the call at `steps[index]` is Win64's `__chkstk`, which a frame over
 /// a page opens with as `mov eax, size; call __chkstk` and which keeps every
 /// register but `rax`.
+#[cfg(any(target_arch = "x86_64", target_os = "macos"))]
 fn probes_stack(isa: Isa, steps: &[Step], index: usize) -> bool {
-   #[cfg(any(target_arch = "x86_64", target_os = "macos"))]
-   if isa == (Isa::X86_64 { win64: true })
-      && let Some(before) = index.checked_sub(1).and_then(|at| steps.get(at))
-   {
-      return matches!(before.op, Op::Imm { reg, .. } if reg == isa.ret());
-   }
+   isa == (Isa::X86_64 { win64: true })
+      && index
+         .checked_sub(1)
+         .and_then(|at| steps.get(at))
+         .is_some_and(|before| matches!(before.op, Op::Imm { reg, .. } if reg == isa.ret()))
+}
+
+#[cfg(not(any(target_arch = "x86_64", target_os = "macos")))]
+const fn probes_stack(_isa: Isa, _steps: &[Step], _index: usize) -> bool {
    false
 }

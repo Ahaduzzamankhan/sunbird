@@ -65,20 +65,14 @@ impl Isa {
    /// on arm64, the first argument elsewhere.
    #[must_use]
    pub const fn slot(self) -> Option<Reg> {
-      match self {
-         Self::Aarch64 => Some(8),
-         isa => isa.arg(0),
-      }
+      if matches!(self, Self::Aarch64) { Some(8) } else { self.arg(0) }
    }
 
    /// The register argument `index` of a function returning through a slot
    /// arrives in, past the slot where it takes an argument register.
    #[must_use]
    pub const fn slot_arg(self, index: usize) -> Option<Reg> {
-      match self {
-         Self::Aarch64 => self.arg(index),
-         isa => isa.arg(index + 1),
-      }
+      if matches!(self, Self::Aarch64) { self.arg(index) } else { self.arg(index + 1) }
    }
 
    /// The stack pointer.
