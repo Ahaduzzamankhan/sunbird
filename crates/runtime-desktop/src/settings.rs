@@ -30,6 +30,7 @@ use std::{
       OnceLock,
       atomic::{
          AtomicBool,
+         AtomicU16,
          AtomicUsize,
          Ordering,
       },
@@ -79,6 +80,48 @@ type PageChangedFn = unsafe extern "C" fn(*mut c_void, *mut c_void) -> usize;
 
 /// The sidebar's selected-page map, `fn(page) -> page`.
 type SelectedFn = unsafe extern "C" fn(u8) -> u8;
+
+/// The page-name function, `fn(page) -> Text`, see
+/// [`locate::SettingsTitle::name`].
+type NameFn = unsafe extern "C" fn(sret: *mut c_void, page: u8) -> *mut c_void;
+
+/// Discord's translate, see [`locate::SettingsTitle::translate`].
+type TranslateFn = unsafe extern "C" fn(
+   sret: *mut c_void,
+   key: *const u8,
+   key_len: usize,
+   hash: u64,
+   default: *const Untranslated,
+) -> *mut c_void;
+
+/// The English text translate falls back to when no translation has the
+/// key's hash, laid out as the page-name function builds it.
+#[repr(C)]
+struct Untranslated {
+   text: *const u8,
+   len:  usize,
+   one:  usize,
+   zero: usize,
+}
+
+/// The settings header's render on macOS, see
+/// [`locate::SettingsTitle::header`].
+type HeaderFn = unsafe extern "C" fn(
+   sret: *mut c_void,
+   state: *mut c_void,
+   arg1: usize,
+   arg2: usize,
+) -> *mut c_void;
+
+/// What names the active page in the pane's title while Sunbird is open.
+struct Title {
+   /// The page-name function.
+   name:      NameFn,
+   translate: TranslateFn,
+}
+
+/// Past every page byte.
+const UNTITLED: u16 = 0x100;
 
 /// Past every page id, which the sidebar only compares with its rows' pages.
 const NO_PAGE: u8 = u8::MAX;
@@ -154,6 +197,10 @@ static ORIG_SECTION: OnceLock<RenderFn> = OnceLock::new();
 static ORIG_PUSH: OnceLock<PushFn> = OnceLock::new();
 static ORIG_SIDEBAR: OnceLock<RenderFn> = OnceLock::new();
 static ORIG_SELECTED: OnceLock<SelectedFn> = OnceLock::new();
+static TITLE: OnceLock<Title> = OnceLock::new();
+static ORIG_HEADER: OnceLock<HeaderFn> = OnceLock::new();
+/// The page the header is naming with Sunbird open, [`UNTITLED`] otherwise.
+static TITLE_PAGE: AtomicU16 = AtomicU16::new(UNTITLED);
 /// Set while the sidebar renders with Sunbird open.
 static UNSELECT: AtomicBool = AtomicBool::new(false);
 static SELECTED_CALL: OnceLock<SelectedCall> = OnceLock::new();
@@ -356,8 +403,133 @@ fn install_entry(image: &Image<'static>, ix: &Index<'_>, page_offset: usize) -> 
    );
    if !hook_unselect(image, ix, &rows) {
       log::warn!("desktop settings: the active page stays selected beside Sunbird");
+   } else if !hook_title(image, ix, page_offset) {
+      log::warn!("desktop settings: the active page's title stays beside Sunbird");
    }
    true
+}
+
+/// Has the pane's title name Sunbird while it is open: x86 sends the header's
+/// one call of the page-name function through [`title_call_detour`], arm64,
+/// with no call-site hooks, marks the header's render for [`name_detour`].
+fn hook_title(image: &Image<'static>, ix: &Index<'_>, page_offset: usize) -> bool {
+   let Some(title) = found(locate::settings_title(ix, page_offset)) else {
+      return false;
+   };
+   let Some(translate) = found(crate::modal::sret_wrap(title.translate).map_err(str::to_owned))
+   else {
+      return false;
+   };
+   // SAFETY: the translate the locator decoded, called with its return slot
+   // first as `TranslateFn` has it.
+   let translate = unsafe { std::mem::transmute::<usize, TranslateFn>(translate) };
+   let name = if let Isa::X86_64 { .. } = ix.isa {
+      // SAFETY: runs from `prepare` before Discord's threads; the detour has
+      // the page-name function's ABI.
+      unsafe { image.hook_call(title.call, &[], title_call_detour as *const () as usize) }
+         .map_err(|err| log::warn!("desktop settings: title call hook failed: {err}"))
+         .ok()
+         // SAFETY: the call's target is the page-name function.
+         .map(|name| unsafe { std::mem::transmute::<usize, NameFn>(name) })
+   } else {
+      hook_header(image, ix, &title)
+   };
+   name.is_some_and(|name| TITLE.set(Title { name, translate }).is_ok())
+}
+
+/// Hooks the page-name function and the header's render, which marks the page
+/// it names while Sunbird is open.
+fn hook_header(
+   image: &Image<'static>,
+   ix: &Index<'_>,
+   title: &locate::SettingsTitle,
+) -> Option<NameFn> {
+   found(hookable(ix, title.name))?;
+   found(hookable(ix, title.header))?;
+   // SAFETY: runs from `prepare` before Discord's threads; the detour has the
+   // page-name function's sret ABI.
+   let name = unsafe {
+      crate::hook_sret::<NameFn>(
+         image,
+         title.name,
+         name_detour as *const () as usize,
+         "desktop settings: page-name hook failed",
+      )
+   }?;
+   // SAFETY: as above; the detour has the header render's sret ABI.
+   let header = unsafe {
+      crate::hook_sret::<HeaderFn>(
+         image,
+         title.header,
+         header_detour as *const () as usize,
+         "desktop settings: header hook failed",
+      )
+   }?;
+   let _ = ORIG_HEADER.set(header);
+   Some(name)
+}
+
+/// Sunbird's name, as Discord's own page names are built.
+fn sunbird_title(sret: *mut c_void, title: &Title) -> *mut c_void {
+   const KEY: &str = "SUNBIRD";
+   const NAME: &str = "Sunbird";
+   /// No translation has it, so translate falls back to [`NAME`].
+   const HASH: u64 = 0x5355_4E42_4952_4400;
+
+   let default = Untranslated {
+      text: NAME.as_ptr(),
+      len:  NAME.len(),
+      one:  1,
+      zero: 0,
+   };
+   // SAFETY: `sret` is the caller's slot for a page's name, which translate
+   // fills with the same type; the key and default are static.
+   unsafe { (title.translate)(sret, KEY.as_ptr(), KEY.len(), HASH, &raw const default) }
+}
+
+/// The header's call of the page-name function for its title.
+unsafe extern "C" fn title_call_detour(sret: *mut c_void, page: u8) -> *mut c_void {
+   let Some(title) = TITLE.get() else {
+      return sret;
+   };
+   if OPEN.load(Ordering::Acquire) {
+      return sunbird_title(sret, title);
+   }
+   // SAFETY: forwards the arguments to the page-name function.
+   unsafe { (title.name)(sret, page) }
+}
+
+/// Sunbird for the page the header names, its parent left alone.
+unsafe extern "C" fn name_detour(sret: *mut c_void, page: u8) -> *mut c_void {
+   let Some(title) = TITLE.get() else {
+      return sret;
+   };
+   if u16::from(page) == TITLE_PAGE.load(Ordering::Acquire) {
+      return sunbird_title(sret, title);
+   }
+   // SAFETY: forwards the arguments to the original function.
+   unsafe { (title.name)(sret, page) }
+}
+
+unsafe extern "C" fn header_detour(
+   sret: *mut c_void,
+   state: *mut c_void,
+   arg1: usize,
+   arg2: usize,
+) -> *mut c_void {
+   let Some(orig) = ORIG_HEADER.get().copied() else {
+      return sret;
+   };
+   if OPEN.load(Ordering::Acquire) && !state.is_null() {
+      // SAFETY: `state` is Discord's live settings state, which holds the
+      // active page byte at the offset `host::section` reads it at.
+      let page = unsafe { *state.cast::<u8>().add(PAGE_OFFSET.load(Ordering::Acquire)) };
+      TITLE_PAGE.store(u16::from(page), Ordering::Release);
+   }
+   // SAFETY: forwards all arguments verbatim to the original render.
+   let out = unsafe { orig(sret, state, arg1, arg2) };
+   TITLE_PAGE.store(UNTITLED, Ordering::Release);
+   out
 }
 
 /// Hooks the selected-page map, then the sidebar render that has it select no

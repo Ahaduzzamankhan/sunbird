@@ -167,6 +167,22 @@ pub const LOCATORS: &[Locator] = &[
    },
    #[cfg(any(target_arch = "x86_64", target_os = "macos"))]
    Locator {
+      name:     "settings title",
+      families: DESKTOP,
+      run:      |ix| {
+         let section = settings::settings_section(ix)?;
+         let title = settings::settings_title(ix, section.page_offset)?;
+         Ok(format!(
+            "name {:#x}, translate {:#x}, header {}, call {:#x}",
+            title.name,
+            title.translate,
+            hookable(ix, title.header)?,
+            title.call
+         ))
+      },
+   },
+   #[cfg(any(target_arch = "x86_64", target_os = "macos"))]
+   Locator {
       name:     "settings page changed",
       families: DESKTOP,
       run:      |ix| {
