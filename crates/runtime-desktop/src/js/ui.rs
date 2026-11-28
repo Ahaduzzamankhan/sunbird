@@ -1887,16 +1887,18 @@ pub fn desktop_ui_object<'js>(ctx: &Ctx<'js>, plugin: &str) -> rquickjs::Result<
          Function::new(ctx.clone(), |ctx: Ctx<'js>| Value::new_null(ctx))?,
       )?;
    }
+   let dialog_owner = plugin.to_owned();
    ui.set(
       "choose",
-      Function::new(ctx.clone(), |ctx: Ctx<'js>, options: Object<'js>| {
-         choose_dialog(&ctx, &options)
+      Function::new(ctx.clone(), move |ctx: Ctx<'js>, options: Object<'js>| {
+         choose_dialog(&ctx, &dialog_owner, &options)
       })?,
    )?;
+   let sheet_owner = plugin.to_owned();
    ui.set(
       "showSheet",
-      Function::new(ctx.clone(), |ctx: Ctx<'js>, options: Object<'js>| {
-         sheet_dialog(&ctx, &options)
+      Function::new(ctx.clone(), move |ctx: Ctx<'js>, options: Object<'js>| {
+         sheet_dialog(&ctx, &sheet_owner, &options)
       })?,
    )?;
    Ok(ui)
@@ -1906,6 +1908,7 @@ pub fn desktop_ui_object<'js>(ctx: &Ctx<'js>, plugin: &str) -> rquickjs::Result<
 /// was dismissed.
 fn choose_dialog<'js>(
    ctx: &Ctx<'js>,
+   plugin: &str,
    options: &Object<'js>,
 ) -> rquickjs::Result<rquickjs::Promise<'js>> {
    let title = options.get::<_, Option<String>>("title")?;
@@ -1919,12 +1922,13 @@ fn choose_dialog<'js>(
    }
    let body = message.map(|text| ModalSection::Text { title: None, text });
    let title = title.unwrap_or_else(|| "Sunbird".to_owned());
-   in_background(ctx, move || answer(title, body, items))
+   in_background(ctx, plugin, move || answer(title, body, items))
 }
 
 /// `phoenix.ui.showSheet` as a native Mana modal with the code viewer.
 fn sheet_dialog<'js>(
    ctx: &Ctx<'js>,
+   plugin: &str,
    options: &Object<'js>,
 ) -> rquickjs::Result<rquickjs::Promise<'js>> {
    let title = options.get::<_, Option<String>>("title")?;
@@ -1943,7 +1947,7 @@ fn sheet_dialog<'js>(
       highlight,
    };
    let title = title.unwrap_or_else(|| "Sunbird".to_owned());
-   in_background(ctx, move || answer(title, Some(body), items))
+   in_background(ctx, plugin, move || answer(title, Some(body), items))
 }
 
 /// Opens a choose dialog and waits for the picked index, -1 when it is
