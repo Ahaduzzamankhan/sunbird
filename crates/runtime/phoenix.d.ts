@@ -1549,8 +1549,8 @@ declare namespace Phoenix {
     /// requests themselves stay listed. Desktop only.
     hideCount?(count: "friendRequests" | "messageRequests"): Remover;
     /// Turns off Desktop Phoenix's solo DM call disconnect after 3 minutes (`"dmCall"`) or the
-    /// guild AFK move and disconnect (`"guildAfk"`) until the returned function runs. Windows and
-    /// Linux only.
+    /// guild AFK move and disconnect (`"guildAfk"`) until the returned function runs. Desktop
+    /// only.
     disableCallIdle?(timer: "dmCall" | "guildAfk"): Remover;
     /// Collapses the channel sidebar to the server rail until the returned function runs, the
     /// way Discord's member list toggle hides members. The width the user dragged it to comes

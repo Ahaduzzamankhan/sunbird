@@ -96,6 +96,7 @@ unsafe fn hook(image: &Image<'static>, poll: usize, shim: usize, original: &Atom
    }
 }
 
+#[cfg(target_arch = "x86_64")]
 macro_rules! shim {
    ($name:ident, $off:ident, $original:ident) => {
       #[unsafe(naked)]
@@ -107,6 +108,28 @@ macro_rules! shim {
             "ret",
             "2:",
             "jmp qword ptr [rip + {original}]",
+            off = sym $off,
+            original = sym $original,
+         );
+      }
+   };
+}
+
+#[cfg(all(target_os = "macos", target_arch = "aarch64"))]
+macro_rules! shim {
+   ($name:ident, $off:ident, $original:ident) => {
+      #[unsafe(naked)]
+      extern "C" fn $name() {
+         core::arch::naked_asm!(
+            "adrp x16, {off}@PAGE",
+            "ldrb w16, [x16, {off}@PAGEOFF]",
+            "cbz w16, 2f",
+            "mov w0, #0",
+            "ret",
+            "2:",
+            "adrp x16, {original}@PAGE",
+            "ldr x16, [x16, {original}@PAGEOFF]",
+            "br x16",
             off = sym $off,
             original = sym $original,
          );

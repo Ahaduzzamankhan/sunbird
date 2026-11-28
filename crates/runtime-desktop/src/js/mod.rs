@@ -18,13 +18,12 @@ use rquickjs::{
    JsLifetime,
 };
 
-#[cfg(target_arch = "x86_64")]
-use crate::call_idle::{
-   self,
-   Timer,
-};
 use crate::{
    accessories,
+   call_idle::{
+      self,
+      Timer,
+   },
    composer,
    context_menu,
    counts::{
@@ -82,7 +81,6 @@ pub struct Desktop<'js> {
    /// `phoenix.ui.hideCount` holds by id and plugin.
    pub hidden_counts:  RefCell<Vec<(u64, String, Count)>>,
    /// `phoenix.ui.disableCallIdle` holds by id and plugin.
-   #[cfg(target_arch = "x86_64")]
    pub idle_off:       RefCell<Vec<(u64, String, Timer)>>,
 }
 
@@ -209,12 +207,9 @@ pub fn unload(ctx: &Ctx<'_>, name: &str) {
    hidden.retain(|(_, plugin, _)| plugin != name);
    counts::hide(hidden.iter().map(|&(.., count)| count));
 
-   #[cfg(target_arch = "x86_64")]
-   {
-      let mut off = registry.idle_off.borrow_mut();
-      off.retain(|(_, plugin, _)| plugin != name);
-      call_idle::turn_off(off.iter().map(|&(.., timer)| timer));
-   }
+   let mut off = registry.idle_off.borrow_mut();
+   off.retain(|(_, plugin, _)| plugin != name);
+   call_idle::turn_off(off.iter().map(|&(.., timer)| timer));
 
    fonts::unload(name);
    themes::unload(name);

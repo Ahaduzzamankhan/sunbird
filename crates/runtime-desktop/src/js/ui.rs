@@ -50,15 +50,14 @@ use rquickjs::{
    },
 };
 
-#[cfg(target_arch = "x86_64")]
-use crate::call_idle::{
-   self,
-   Timer,
-};
 use crate::{
    accessories::{
       self,
       RenderedAccessory,
+   },
+   call_idle::{
+      self,
+      Timer,
    },
    composer,
    context_menu::{
@@ -1926,7 +1925,6 @@ fn hide_count<'js>(ctx: &Ctx<'js>, plugin: &str, name: &str) -> rquickjs::Result
 }
 
 /// `phoenix.ui.disableCallIdle`, until the returned remover runs.
-#[cfg(target_arch = "x86_64")]
 fn disable_call_idle<'js>(
    ctx: &Ctx<'js>,
    plugin: &str,
@@ -1955,16 +1953,6 @@ fn disable_call_idle<'js>(
       off.retain(|&(held, ..)| held != hold);
       call_idle::turn_off(off.iter().map(|&(.., timer)| timer));
    })
-}
-
-/// The poll shims are x86-64, so macOS keeps the timers.
-#[cfg(not(target_arch = "x86_64"))]
-fn disable_call_idle<'js>(
-   ctx: &Ctx<'js>,
-   _plugin: &str,
-   _name: &str,
-) -> rquickjs::Result<Function<'js>> {
-   noop_handle(ctx)
 }
 
 pub fn on_send<'js>(
