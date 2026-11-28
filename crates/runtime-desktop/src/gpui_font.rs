@@ -14,24 +14,6 @@ use std::sync::{
 /// The main and code families, empty for Discord's own.
 static FONTS: RwLock<(&'static str, &'static str)> = RwLock::new(("", ""));
 
-#[derive(Clone, Copy)]
-enum Role {
-   Main,
-   Mono,
-}
-
-impl Role {
-   fn of(family: &str) -> Option<Self> {
-      if family.starts_with("gg sans mono") {
-         Some(Self::Mono)
-      } else if family.starts_with("gg sans") || family.starts_with("ABC Ginto") {
-         Some(Self::Main)
-      } else {
-         None
-      }
-   }
-}
-
 /// Sets both families, `""` keeping Discord's.
 pub fn set(main: &str, mono: &str) {
    let main = crate::gpui::intern_str(main.trim());
@@ -43,10 +25,13 @@ pub fn clear() {
    set("", "");
 }
 
+#[cfg(target_arch = "x86_64")]
 pub fn is_supported() -> bool {
-   #[cfg(target_arch = "x86_64")]
-   return hook::installed();
-   #[cfg(not(target_arch = "x86_64"))]
+   hook::installed()
+}
+
+#[cfg(not(target_arch = "x86_64"))]
+pub const fn is_supported() -> bool {
    false
 }
 
@@ -187,13 +172,28 @@ mod hook {
    };
    use phoenix_sigs::desktop;
 
-   use super::{
-      FONTS,
-      Role,
-   };
+   use super::FONTS;
    use crate::gpui::SharedString;
 
    static HOOK: OnceLock<Observed> = OnceLock::new();
+
+   #[derive(Clone, Copy)]
+   enum Role {
+      Main,
+      Mono,
+   }
+
+   impl Role {
+      fn of(family: &str) -> Option<Self> {
+         if family.starts_with("gg sans mono") {
+            Some(Self::Mono)
+         } else if family.starts_with("gg sans") || family.starts_with("ABC Ginto") {
+            Some(Self::Main)
+         } else {
+            None
+         }
+      }
+   }
 
    /// `SharedString` tags, as [`SharedString`] documents them. Below `STATIC`
    /// the tag is the length of text stored inline after it.
