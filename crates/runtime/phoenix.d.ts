@@ -1092,7 +1092,8 @@ declare namespace Phoenix {
     supported(): boolean;
     /// The `*.theme.css` files in the themes folder, by file name.
     list(): InstalledTheme[];
-    /// Applies a theme from `list()`.
+    /// Applies a theme from `list()` and keeps it after a restart until `clear()`, `setCss()`, or
+    /// unloading the plugin.
     apply(id: string): void;
     /// Applies stylesheet text, such as a bundled preset. Returns whether it themes anything.
     setCss(css: string): boolean;
