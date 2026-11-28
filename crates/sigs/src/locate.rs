@@ -18,6 +18,8 @@ pub mod ready;
 pub mod settings;
 pub mod spotify;
 pub mod staff;
+#[cfg(any(target_arch = "x86_64", target_os = "macos"))]
+pub mod sticker;
 
 #[cfg(any(target_arch = "x86_64", target_os = "macos"))]
 pub mod gpui;
@@ -87,6 +89,12 @@ pub const LOCATORS: &[Locator] = &[
       name:     "composer buttons",
       families: DESKTOP,
       run:      |ix| composer::composer_buttons(ix).map(|func| format!("{func:#x}")),
+   },
+   #[cfg(any(target_arch = "x86_64", target_os = "macos"))]
+   Locator {
+      name:     "sticker send",
+      families: DESKTOP,
+      run:      |ix| sticker::sticker_send(ix).and_then(|func| hookable(ix, func)),
    },
    Locator {
       name:     "menu submenu",

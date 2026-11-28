@@ -1267,7 +1267,8 @@ declare namespace Phoenix {
     onEmojiPick(handler: (emojiId: string, ctx: UiContext) => string | void): Remover;
     /// Runs when a sticker is pressed in the picker under the message box, with its id. Return
     /// `true` to take the press, so Phoenix neither sends the sticker nor shows a Nitro ad, or
-    /// nothing to leave it to Phoenix. Desktop has no picker presses to report.
+    /// nothing to leave it to Phoenix. Desktop also runs it for stickers sent from autocomplete,
+    /// but never for a sticker that needs Nitro, whose press shows the ad first.
     onStickerPick(handler: (stickerId: string, ctx: UiContext) => boolean | void): Remover;
   }
 

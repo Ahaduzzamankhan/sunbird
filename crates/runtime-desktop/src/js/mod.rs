@@ -44,6 +44,7 @@ use crate::{
       self,
       Tweak,
    },
+   sticker,
    toolbar,
 };
 
@@ -66,6 +67,8 @@ pub struct Desktop<'js> {
    /// `phoenix.messages.onEmojiPick` handlers by id and plugin. Desktop has
    /// no picker presses to give them, only the unlock they turn on.
    pub emoji_pickers:    RefCell<Vec<(u64, String)>>,
+   /// `phoenix.messages.onStickerPick` handlers by id and plugin.
+   pub sticker_pickers:  RefCell<Vec<(u64, String, Function<'js>)>>,
    /// `phoenix.ui.onEvent("rowDoubleTap")` handlers by id and plugin.
    pub double_taps:      RefCell<Vec<(u64, String, Function<'js>)>>,
    /// `phoenix.ui.hide` holds by id and plugin.
@@ -153,6 +156,9 @@ pub fn unload(ctx: &Ctx<'_>, name: &str) {
    pickers.retain(|(_, plugin)| plugin != name);
    emoji::unlock(!pickers.is_empty());
    drop(pickers);
+
+   registry.sticker_pickers.borrow_mut().retain(|(_, plugin, _)| plugin != name);
+   sticker::set_active(!registry.sticker_pickers.borrow().is_empty());
 
    let mut taps = registry.double_taps.borrow_mut();
    taps.retain(|(_, plugin, _)| plugin != name);
