@@ -1638,9 +1638,9 @@ const DESKTOP_FULL: &[&str] = &[
    "desktop-themes",
 ];
 
-const DESKTOP_PARTIAL: &[&str] = &["fakenitro"];
+const DESKTOP_PARTIAL: &[&str] = &["fakenitro", "hide-composer-buttons", "reviewdb"];
 
-const MOBILE_ONLY: &[&str] = &["hide-composer-buttons", "reviewdb", "taptap", "example"];
+const MOBILE_ONLY: &[&str] = &["taptap", "example"];
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum DesktopCompat {
