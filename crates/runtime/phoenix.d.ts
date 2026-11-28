@@ -1472,7 +1472,7 @@ declare namespace Phoenix {
   /// land a moment after the screen they belong to. Everything goes away when the plugin is
   /// turned off.
   interface Ui {
-    /// In the chat header, left of search. On Windows Desktop Phoenix, in the channel toolbar after the
+    /// In the chat header, left of search. On Desktop Phoenix, in the channel toolbar after the
     /// member list button (where Discord shows one), with `label` as its tooltip and `icon` mapped
     /// to Mana's icon of that name (`res://ic_mana_panel_open` is `PanelOpen`); `tint` is ignored.
     addHeaderButton(options: ButtonOptions): ButtonRemover;
@@ -1558,7 +1558,7 @@ declare namespace Phoenix {
     disableCallIdle?(timer: "dmCall" | "guildAfk"): Remover;
     /// Collapses the channel sidebar to the server rail until the returned function runs, the
     /// way Discord's member list toggle hides members. The width the user dragged it to comes
-    /// back on restore. Available on Windows Desktop Phoenix builds with a recognized sidebar.
+    /// back on restore. Available on Desktop Phoenix builds with a recognized sidebar.
     collapseChannels?(): Remover;
     /// Runs `run` when `key` (one letter or digit) is pressed with the given modifiers while
     /// Discord is focused, and keeps the key from Discord. `ctrl` or `alt` is required.

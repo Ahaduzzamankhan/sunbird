@@ -4,6 +4,8 @@
 #[cfg(any(target_arch = "x86_64", target_os = "macos"))]
 pub mod call_idle;
 #[cfg(any(target_arch = "x86_64", target_os = "macos"))]
+pub mod channel;
+#[cfg(any(target_arch = "x86_64", target_os = "macos"))]
 pub mod counts;
 #[cfg(any(target_arch = "x86_64", target_os = "macos"))]
 pub mod message;
@@ -305,6 +307,40 @@ pub const LOCATORS: &[Locator] = &[
             .map(|tally| hookable(ix, tally))
             .collect::<Found<Vec<String>>>()
             .map(|tallies| tallies.join(", "))
+      },
+   },
+   #[cfg(any(target_arch = "x86_64", target_os = "macos"))]
+   Locator {
+      name:     "channel sidebar",
+      families: DESKTOP,
+      run:      |ix| {
+         let found = channel::channel_sidebar(ix)?;
+         Ok(format!(
+            "width {}, column {} (call {:#x}), publish {}, covered {}, rail {:#x}",
+            hookable(ix, found.width)?,
+            hookable(ix, found.column)?,
+            found.column_site,
+            hookable(ix, found.publish)?,
+            hookable(ix, found.covered)?,
+            found.rail
+         ))
+      },
+   },
+   #[cfg(any(target_arch = "x86_64", target_os = "macos"))]
+   Locator {
+      name:     "channel toolbar",
+      families: DESKTOP,
+      run:      |ix| {
+         let found = channel::channel_toolbar(ix)?;
+         Ok(format!(
+            "button {}, append {}, id {:#x}, sizes {:#x}/{:#x}, click +{:#x}",
+            hookable(ix, found.button)?,
+            hookable(ix, found.append)?,
+            found.members_id,
+            found.button_size,
+            found.toolbar_size,
+            found.on_click
+         ))
       },
    },
    #[cfg(any(target_arch = "x86_64", target_os = "macos"))]

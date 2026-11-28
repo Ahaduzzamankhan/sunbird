@@ -259,8 +259,8 @@ pub fn prepare() -> Result<(), Error> {
    feature("icons", || icons::install(&image));
    feature("composer", || composer::install(&image));
    feature("spotify", || spotify::install(&ix));
-   feature("sidebar", || sidebar::install(&image));
-   feature("toolbar", || toolbar::install(&image));
+   feature("sidebar", || sidebar::install(&image, &ix));
+   feature("toolbar", || toolbar::install(&image, &ix));
    feature("badges", || badges::install(&image, &ix));
    feature("emoji", || emoji::install(&image, &ix));
    feature("call_idle_dm", || call_idle::install_dm(&image, &ix));
