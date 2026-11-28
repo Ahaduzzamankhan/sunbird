@@ -1122,7 +1122,7 @@ checksum = "13c2bddecc57b384dee18652358fb23172facb8a2c51ccc10d74c157bdea3292"
 [[package]]
 name = "sunhook-sys"
 version = "0.1.0"
-source = "git+https://github.com/sunbird-tools/sunhook#6764aac2cc95b7097ceb3749ba8bf860948c1bc1"
+source = "git+https://github.com/sunbird-tools/sunhook#21aacda5e0937dc01a8055198ceb037ec11fa052"
 dependencies = [
  "cc",
  "libc",

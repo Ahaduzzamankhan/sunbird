@@ -137,7 +137,7 @@ pub fn relationship_counts(ix: &Index<'_>) -> Found<Vec<usize>> {
       .partition::<Vec<_>, _>(|&tally| entry_hookable(ix, tally).is_ok());
    if hookable.is_empty() {
       return Err(format!(
-         "no tally can be hooked, {refused:x?} set x17 as they open"
+         "no tally can be hooked, {refused:x?} set x16 and x17 as they open"
       ));
    }
    Ok(hookable)

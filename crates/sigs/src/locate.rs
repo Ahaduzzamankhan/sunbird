@@ -329,21 +329,24 @@ fn hookable(ix: &Index<'_>, func: usize) -> Found<String> {
 }
 
 /// Whether sunhook can hook `func`'s entry. On arm64 it jumps back from the
-/// moved opening through `x17`, so an opening that sets `x17` itself loses it.
+/// moved opening through `x17`, or `x16` when the opening sets `x17`, so an
+/// opening that sets both has no register left for the jump.
 pub fn entry_hookable(ix: &Index<'_>, func: usize) -> Found<()> {
    /// The instructions an arm64 entry hook displaces.
    const DISPLACED: usize = 4;
+   /// `x16` and `x17`.
+   const SCRATCH: u32 = 3 << 16;
    if ix.isa != crate::index::Isa::Aarch64 {
       return Ok(());
    }
-   let sets_x17 = ix
+   let sets = ix
       .func(func)?
       .head(DISPLACED)
       .iter()
-      .any(|step| step.writes & 1 << 17 != 0);
-   if sets_x17 {
+      .fold(0, |seen, step| seen | step.writes & SCRATCH);
+   if sets == SCRATCH {
       return Err(format!(
-         "{func:#x} sets x17 as it opens, which sunhook jumps back through"
+         "{func:#x} sets x16 and x17 as it opens, leaving sunhook no register to jump back through"
       ));
    }
    Ok(())
