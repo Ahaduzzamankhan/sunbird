@@ -16,6 +16,7 @@ use crate::index::{
    Op,
    Reg,
    Step,
+   Value,
 };
 
 /// What a register holds before a step, as far as the walk can tell.
@@ -172,4 +173,61 @@ pub fn walk(isa: Isa, steps: &[Step], mut visit: impl FnMut(usize, &Step, &Regs)
          regs[usize::from(reg)] = before[usize::from(reg)].offset(by);
       }
    }
+}
+
+/// Calls `visit(step, holds)` for each step with what carries `entry`'s value.
+///
+/// `holds(reg)` tells whether `reg` carries the value `entry` held on entry: a
+/// copy of it, or a reload of a slot it was spilled to through a base register
+/// left alone since. A call clobbers the caller-saved copies.
+pub fn follow(
+   isa: Isa,
+   steps: &[Step],
+   entry: Reg,
+   mut visit: impl FnMut(&Step, &dyn Fn(Reg) -> bool),
+) {
+   let mut copies = 1_u32 << entry;
+   let mut spills = Vec::<(Reg, isize)>::new();
+   for (index, step) in steps.iter().enumerate() {
+      let holds = |reg: Reg| copies & 1 << reg != 0;
+      visit(step, &holds);
+      let (spill, alias) = match step.op {
+         Op::Store {
+            value: Value::Reg(value),
+            base,
+            offset,
+            size: 8,
+         } if holds(value) => (Some((base, offset)), None),
+         Op::Move { dst, src } if holds(src) => (None, Some(dst)),
+         Op::Load {
+            reg,
+            base,
+            offset,
+            size: 8,
+         } if spills.contains(&(base, offset)) => (None, Some(reg)),
+         _ => (None, None),
+      };
+      copies &= !step.writes;
+      if calls(step) && !probes_stack(isa, steps, index) {
+         copies &= !isa.caller_saved();
+      }
+      spills.retain(|&(base, _)| step.writes & 1 << base == 0);
+      spills.extend(spill);
+      if let Some(dst) = alias {
+         copies |= 1 << dst;
+      }
+   }
+}
+
+/// Whether the call at `steps[index]` is Win64's `__chkstk`, which a frame over
+/// a page opens with as `mov eax, size; call __chkstk` and which keeps every
+/// register but `rax`.
+fn probes_stack(isa: Isa, steps: &[Step], index: usize) -> bool {
+   #[cfg(any(target_arch = "x86_64", target_os = "macos"))]
+   if isa == (Isa::X86_64 { win64: true })
+      && let Some(before) = index.checked_sub(1).and_then(|at| steps.get(at))
+   {
+      return matches!(before.op, Op::Imm { reg, .. } if reg == isa.ret());
+   }
+   false
 }

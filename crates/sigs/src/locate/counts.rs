@@ -8,12 +8,7 @@ use crate::{
       Isa,
       Op,
       Reg,
-      Value,
-      flow::{
-         self,
-         Regs,
-         Val,
-      },
+      flow,
    },
    locate::entry_hookable,
    one,
@@ -159,39 +154,21 @@ fn sorts_relationships(func: &Func<'_>) -> bool {
 }
 
 /// Whether `func` writes all 8 words of the `[u64; 8]` it returns through a
-/// slot, following the slot's pointer through copies and stack spills.
+/// slot.
 fn fills_slot(ix: &Index<'_>, func: &Func<'_>) -> bool {
-   // arm64 passes the return slot in `x8`, x86-64 as the first argument.
-   let entry = match ix.isa {
-      Isa::Aarch64 => Some(8),
-      isa => isa.arg(0),
-   };
-   let Some(entry) = entry else {
+   let Some(slot) = ix.isa.slot() else {
       return false;
    };
-   let mut copies = 1_u32 << entry;
-   let mut spills = Vec::<isize>::new();
    let mut words = 0_u8;
-   flow::walk(ix.isa, &func.steps(), |_, step, regs| {
-      let holds = |reg: Reg| holds_slot(copies, &spills, regs, reg);
-      let mut fill = |offset: isize| {
-         if offset % 8 == 0
-            && let Ok(word @ 0..8) = usize::try_from(offset / 8)
-         {
-            words |= 1 << word;
-         }
-      };
+   let mut fill = |offset: isize| {
+      if offset % 8 == 0
+         && let Ok(word @ 0..8) = usize::try_from(offset / 8)
+      {
+         words |= 1 << word;
+      }
+   };
+   flow::follow(ix.isa, &func.steps(), slot, |step, holds| {
       match step.op {
-         Op::Store {
-            value: Value::Reg(value),
-            base,
-            offset,
-            ..
-         } if holds(value) => {
-            if let Val::Stack(at) = regs[usize::from(base)] {
-               spills.push(at + offset);
-            }
-         },
          Op::Store {
             base,
             offset,
@@ -209,26 +186,8 @@ fn fills_slot(ix: &Index<'_>, func: &Func<'_>) -> bool {
          },
          _ => {},
       }
-      let moved_to = match step.op {
-         Op::Move { dst, src } if holds_slot(copies, &spills, regs, src) => Some(dst),
-         _ => None,
-      };
-      copies &= !step.writes;
-      if matches!(step.op, Op::Call(_)) {
-         copies &= !ix.isa.caller_saved();
-      }
-      if let Some(dst) = moved_to {
-         copies |= 1 << dst;
-      }
    });
    words == u8::MAX
-}
-
-/// Whether `reg` holds the return slot's pointer: a copy of it, or a reload of
-/// a stack slot it was spilled to.
-fn holds_slot(copies: u32, spills: &[isize], regs: &Regs, reg: Reg) -> bool {
-   copies & 1 << reg != 0
-      || matches!(regs[usize::from(reg)], Val::Spilled { slot, bias: 0 } if spills.contains(&slot))
 }
 
 /// The function loading the UI id `id`, and the site and callee of the call
@@ -258,9 +217,7 @@ fn badge_call<'ix>(ix: &'ix Index<'ix>, id: &[u8]) -> Found<(Func<'ix>, usize, u
 /// Follows the count argument of the call at `site` in `list` back through
 /// register copies to the call that returned it.
 fn count_source(ix: &Index<'_>, list: &Func<'_>, site: usize) -> Found<usize> {
-   // arm64 returns `out` through `x8`, so the count is one argument earlier.
-   let index = if ix.isa == Isa::Aarch64 { 2 } else { 3 };
-   let mut reg: Reg = ix.isa.arg(index).ok_or("no count argument register")?;
+   let mut reg = ix.isa.slot_arg(2).ok_or("no count argument register")?;
    let steps = list.steps();
    let before = steps.partition_point(|step| step.at < site);
    for step in steps[..before].iter().rev() {

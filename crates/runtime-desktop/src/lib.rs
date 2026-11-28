@@ -297,7 +297,7 @@ pub fn prepare() -> Result<(), Error> {
       feature("optimistic_delete", || {
          accessories::install_optimistic_delete(&image, &ix);
       });
-      feature("ready", || ready::install(&image));
+      feature("ready", || ready::install(&image, &ix));
    }
    #[cfg(target_os = "macos")]
    feature("message_writer", || message::writer::install(&image));

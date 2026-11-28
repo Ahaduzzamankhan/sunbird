@@ -8,6 +8,8 @@ pub mod counts;
 #[cfg(any(target_arch = "x86_64", target_os = "macos"))]
 pub mod message;
 #[cfg(any(target_arch = "x86_64", target_os = "macos"))]
+pub mod ready;
+#[cfg(any(target_arch = "x86_64", target_os = "macos"))]
 pub mod settings;
 pub mod spotify;
 pub mod staff;
@@ -246,6 +248,31 @@ pub const LOCATORS: &[Locator] = &[
             .map(|tallies| tallies.join(", "))
       },
    },
+   #[cfg(any(target_arch = "x86_64", target_os = "macos"))]
+   Locator {
+      name:     "ready text",
+      families: DESKTOP,
+      run:      |ix| {
+         let parse = ready_parse(ix)?;
+         hookable(ix, ready::ready_text(ix, &parse)?)
+      },
+   },
+   #[cfg(any(target_arch = "x86_64", target_os = "macos"))]
+   Locator {
+      name:     "ready session",
+      families: DESKTOP,
+      run:      |ix| {
+         let parse = ready_parse(ix)?;
+         let session = ready::ready_session(ix, &parse)?;
+         Ok(format!(
+            "{} (kind +{:#x} = {}, raw +{:#x})",
+            hookable(ix, session.func)?,
+            session.kind,
+            session.raw_kind,
+            session.raw
+         ))
+      },
+   },
 ];
 
 /// The `ClientAccessGate` read the runtime makes answer "no gate". The
@@ -313,6 +340,14 @@ pub fn emoji_check(ix: &Index<'_>) -> Found<EmojiCheck> {
       intention: usize::try_from(offset)
          .map_err(|_| format!("emoji check at {func:?} reads a negative offset"))?,
    })
+}
+
+/// [`ready::ready_parse`] from the registry's READY handler.
+#[cfg(any(target_arch = "x86_64", target_os = "macos"))]
+fn ready_parse<'ix>(ix: &'ix Index<'ix>) -> Found<Func<'ix>> {
+   let registry = ix.registry()?;
+   let id = registry.id("READY").ok_or("the registry has no READY")?;
+   ready::ready_parse(ix, registry.entry(id).handler)
 }
 
 /// `func` with the whole instructions an x86-64 entry hook displaces there.

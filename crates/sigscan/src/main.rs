@@ -464,38 +464,6 @@ fn check(
          report("resolve font", desktop::resolve_font(image).map(at));
          if abi == x86::Abi::Win64 {
             report(
-               "ready text",
-               registry
-                  .as_ref()
-                  .map_err(|_| "needs the registry".to_owned())
-                  .and_then(|registry| {
-                     let id = registry.id("READY").ok_or("no READY")?;
-                     desktop::ready_parse(image, registry.entry(id).handler)
-                        .and_then(|parse| desktop::ready_text(image, parse))
-                  })
-                  .map(at),
-            );
-            report(
-               "ready session",
-               registry
-                  .as_ref()
-                  .map_err(|_| "needs the registry".to_owned())
-                  .and_then(|registry| {
-                     let id = registry.id("READY").ok_or("no READY")?;
-                     desktop::ready_parse(image, registry.entry(id).handler)
-                        .and_then(|parse| desktop::ready_session(image, parse))
-                  })
-                  .map(|session| {
-                     format!(
-                        "{} (kind +{:#x} = {}, raw +{:#x})",
-                        at(session.func),
-                        session.kind,
-                        session.raw_kind,
-                        session.raw
-                     )
-                  }),
-            );
-            report(
                "channel toolbar",
                desktop::channel_toolbar(image).map(|toolbar| {
                   format!(
