@@ -1,8 +1,8 @@
 //! Phoenix's sticker send, which hands each sticker the picker or
 //! autocomplete chose to `phoenix.messages.onStickerPick` handlers first. A
-//! handler that takes it stops the send before Phoenix posts the sticker. A
-//! sticker that needs Nitro never gets here, since the picker answers its press
-//! with the Nitro ad itself.
+//! handler that takes it stops the send before Phoenix posts the sticker.
+//! While one is registered, the picker's Nitro tests are patched out so a
+//! sticker that needs Nitro reaches the send too, in place of the Nitro ad.
 
 use std::sync::{
    OnceLock,
@@ -15,7 +15,10 @@ use std::sync::{
 use phoenix_hook::image::Image;
 use phoenix_sigs::{
    index::Index,
-   locate::sticker,
+   locate::{
+      CodePatch,
+      sticker,
+   },
 };
 
 /// `ChatPaneView::chat_send_sticker_now(&mut self, sticker: Sticker, bool,
@@ -33,9 +36,16 @@ const STICKER_ID: usize = 0x18;
 
 static ACTIVE: AtomicBool = AtomicBool::new(false);
 static SEND: OnceLock<SendFn> = OnceLock::new();
+static GATES: OnceLock<[CodePatch; 2]> = OnceLock::new();
 
 /// Hooks the send from [`crate::prepare`], before Discord's threads run.
 pub fn install(image: &Image<'static>, ix: &Index<'_>) {
+   match sticker::locked_gates(ix) {
+      Ok(gates) => {
+         let _ = GATES.set(gates);
+      },
+      Err(err) => log::warn!("sticker gates: {err}, stickers needing Nitro show the ad"),
+   }
    let func = match sticker::sticker_send(ix) {
       Ok(func) => func,
       Err(err) => {
@@ -53,9 +63,26 @@ pub fn install(image: &Image<'static>, ix: &Index<'_>) {
    }
 }
 
-/// Whether a plugin holds an `onStickerPick` handler.
+/// Whether a plugin holds an `onStickerPick` handler, patching the picker's
+/// Nitro tests out while one does.
 pub fn set_active(active: bool) {
-   ACTIVE.store(active, Ordering::Release);
+   if ACTIVE.swap(active, Ordering::AcqRel) == active {
+      return;
+   }
+   // Without the send hooked, a sticker needing Nitro would reach Discord.
+   let (Some(gates), Some(_), Some(state)) = (GATES.get(), SEND.get(), phoenix_runtime::state())
+   else {
+      return;
+   };
+   for gate in gates {
+      let bytes = if active { gate.patched } else { gate.shipped };
+      // SAFETY: the locator patches one x86 opcode byte or one aligned arm64
+      // instruction, so a thread at the site runs the old or the new
+      // instruction whole.
+      if let Err(err) = unsafe { state.image.write_code(gate.site, &bytes[..gate.len]) } {
+         log::error!("sticker gates: {err}");
+      }
+   }
 }
 
 /// A snowflake, which is past 32 bits for anything made after 2015.

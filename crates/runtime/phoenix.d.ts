@@ -1268,7 +1268,8 @@ declare namespace Phoenix {
     /// Runs when a sticker is pressed in the picker under the message box, with its id. Return
     /// `true` to take the press, so Phoenix neither sends the sticker nor shows a Nitro ad, or
     /// nothing to leave it to Phoenix. Desktop also runs it for stickers sent from autocomplete,
-    /// but never for a sticker that needs Nitro, whose press shows the ad first.
+    /// and while a handler exists, a sticker needing Nitro that no handler takes goes to Discord,
+    /// which refuses it.
     onStickerPick(handler: (stickerId: string, ctx: UiContext) => boolean | void): Remover;
   }
 
