@@ -1568,7 +1568,6 @@ const DESKTOP_FULL: &[&str] = &[
    "clear-urls",
    "fix-embeds",
    "platform-indicators",
-   #[cfg(target_arch = "x86_64")]
    "disable-call-idle",
 ];
 
