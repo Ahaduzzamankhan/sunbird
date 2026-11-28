@@ -532,55 +532,6 @@ fn check(
                }),
             );
          }
-         let pending = desktop::pending_counts(image);
-         let moved = |func: usize| {
-            desktop::hook_point(image, func).map(|point| {
-               match point {
-                  desktop::HookPoint::Entry(moved) => {
-                     format!("{} ({moved} bytes moved)", at(func))
-                  },
-                  desktop::HookPoint::Slots(slots) => {
-                     format!("{} (through slots {slots:x?})", at(func))
-                  },
-               }
-            })
-         };
-         report(
-            "pending counts",
-            pending.as_ref().map_err(Clone::clone).and_then(|found| {
-               let badges = found
-                  .badges
-                  .iter()
-                  .map(|&badge| moved(badge))
-                  .collect::<Found<Vec<String>>>()?;
-               Ok(format!(
-                  "badges {}, friend requests {}",
-                  badges.join(", "),
-                  moved(found.friend_requests)?
-               ))
-            }),
-         );
-         let friend_requests = pending
-            .as_ref()
-            .map(|found| found.friend_requests)
-            .map_err(|_| "needs the pending counts".to_owned());
-         report(
-            "home count",
-            friend_requests
-               .clone()
-               .and_then(|func| desktop::home_count(image, func))
-               .and_then(moved),
-         );
-         report(
-            "home badge",
-            friend_requests
-               .and_then(|func| desktop::home_badge(image, func))
-               .and_then(moved),
-         );
-         report(
-            "relationship counts",
-            desktop::relationship_counts(ix).and_then(moved),
-         );
          let json = desktop::message_json(image);
          report(
             "message json",

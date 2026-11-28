@@ -4,6 +4,8 @@
 #[cfg(any(target_arch = "x86_64", target_os = "macos"))]
 pub mod call_idle;
 #[cfg(any(target_arch = "x86_64", target_os = "macos"))]
+pub mod counts;
+#[cfg(any(target_arch = "x86_64", target_os = "macos"))]
 pub mod message;
 #[cfg(any(target_arch = "x86_64", target_os = "macos"))]
 pub mod settings;
@@ -196,6 +198,54 @@ pub const LOCATORS: &[Locator] = &[
          ))
       },
    },
+   #[cfg(any(target_arch = "x86_64", target_os = "macos"))]
+   Locator {
+      name:     "pending counts",
+      families: DESKTOP,
+      run:      |ix| {
+         let found = counts::pending_counts(ix)?;
+         let badges = found
+            .badges
+            .iter()
+            .map(|&badge| hookable(ix, badge))
+            .collect::<Found<Vec<String>>>()?;
+         Ok(format!(
+            "badges {}, friend requests {}",
+            badges.join(", "),
+            hookable(ix, found.friend_requests)?
+         ))
+      },
+   },
+   #[cfg(any(target_arch = "x86_64", target_os = "macos"))]
+   Locator {
+      name:     "home count",
+      families: DESKTOP,
+      run:      |ix| {
+         let found = counts::pending_counts(ix)?;
+         hookable(ix, counts::home_count(ix, found.friend_requests)?)
+      },
+   },
+   #[cfg(any(target_arch = "x86_64", target_os = "macos"))]
+   Locator {
+      name:     "home badge",
+      families: DESKTOP,
+      run:      |ix| {
+         let found = counts::pending_counts(ix)?;
+         hookable(ix, counts::home_badge(ix, found.friend_requests)?)
+      },
+   },
+   #[cfg(any(target_arch = "x86_64", target_os = "macos"))]
+   Locator {
+      name:     "relationship counts",
+      families: DESKTOP,
+      run:      |ix| {
+         counts::relationship_counts(ix)?
+            .into_iter()
+            .map(|tally| hookable(ix, tally))
+            .collect::<Found<Vec<String>>>()
+            .map(|tallies| tallies.join(", "))
+      },
+   },
 ];
 
 /// The `ClientAccessGate` read the runtime makes answer "no gate". The
@@ -274,6 +324,27 @@ fn hookable(ix: &Index<'_>, func: usize) -> Found<String> {
          crate::desktop::entry_moved(ix.image, func)
             .map(|moved| format!("{func:#x} ({moved} bytes moved)"))
       },
-      _ => Ok(format!("{func:#x}")),
+      _ => entry_hookable(ix, func).map(|()| format!("{func:#x}")),
    }
+}
+
+/// Whether sunhook can hook `func`'s entry. On arm64 it jumps back from the
+/// moved opening through `x17`, so an opening that sets `x17` itself loses it.
+pub fn entry_hookable(ix: &Index<'_>, func: usize) -> Found<()> {
+   /// The instructions an arm64 entry hook displaces.
+   const DISPLACED: usize = 4;
+   if ix.isa != crate::index::Isa::Aarch64 {
+      return Ok(());
+   }
+   let sets_x17 = ix
+      .func(func)?
+      .head(DISPLACED)
+      .iter()
+      .any(|step| step.writes & 1 << 17 != 0);
+   if sets_x17 {
+      return Err(format!(
+         "{func:#x} sets x17 as it opens, which sunhook jumps back through"
+      ));
+   }
+   Ok(())
 }

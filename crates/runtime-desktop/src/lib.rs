@@ -15,7 +15,6 @@ mod call_idle;
 mod composer;
 mod config;
 mod context_menu;
-#[cfg(target_arch = "x86_64")]
 mod counts;
 mod discord;
 mod discord_version;
@@ -259,12 +258,11 @@ pub fn prepare() -> Result<(), Error> {
    if let Some(header) = header {
       feature("headers", || headers::install(&image, header));
       feature("message", || message::install(&image));
-      #[cfg(target_arch = "x86_64")]
-      feature("counts", || counts::install(&image, &ix));
    } else {
       #[cfg(target_os = "macos")]
       feature("headers", || headers::arm64::install(&image));
    }
+   feature("counts", || counts::install(&image, &ix));
    feature("icons", || icons::install(&image));
    feature("composer", || composer::install(&image));
    feature("spotify", || spotify::install(&ix));

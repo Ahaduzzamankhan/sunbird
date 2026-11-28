@@ -1529,9 +1529,9 @@ declare namespace Phoenix {
     /// function to restore it. Desktop only knows `"composer.gift"`.
     hide(accessibilityId: string): Remover;
     /// Hides the count of pending friend requests (the DM list's Friends row, the inbox's Friends
-    /// tab and their share of the Home button's count) or message requests (the DM list's
-    /// Message Requests row) until the returned function runs. The requests themselves stay
-    /// listed. Desktop only.
+    /// tab, the Friends page's Pending tab and their share of the Home button's count) or message
+    /// requests (the DM list's Message Requests row) until the returned function runs. The
+    /// requests themselves stay listed. Desktop only.
     hideCount?(count: "friendRequests" | "messageRequests"): Remover;
     /// Turns off Desktop Phoenix's solo DM call disconnect after 3 minutes (`"dmCall"`) or the
     /// guild AFK move and disconnect (`"guildAfk"`) until the returned function runs. Windows and
