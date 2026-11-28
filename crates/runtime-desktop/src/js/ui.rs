@@ -1335,7 +1335,6 @@ pub fn press_header_button(engine: &Engine, id: u64) {
 
 /// `phoenix.ui.addComposerButton`: a button ahead of the chat bar's own.
 /// `update` changes its label or tint.
-#[cfg(target_os = "macos")]
 fn add_composer_button<'js>(
    ctx: &Ctx<'js>,
    plugin: &str,
@@ -1398,7 +1397,6 @@ fn add_composer_button<'js>(
 }
 
 /// Drops the composer buttons `plugin` added.
-#[cfg(target_os = "macos")]
 pub fn unload_composer_buttons(registry: &Desktop<'_>, plugin: &str) {
    let mut gone = Vec::new();
    registry
@@ -1415,7 +1413,6 @@ pub fn unload_composer_buttons(registry: &Desktop<'_>, plugin: &str) {
 }
 
 /// Runs the `onPress` of composer button `id`.
-#[cfg(target_os = "macos")]
 pub fn press_composer_button(engine: &Engine, id: u64) {
    engine.with(|ctx| {
       let Some(registry) = ctx.userdata::<Desktop<'_>>() else {
@@ -1854,19 +1851,14 @@ pub fn desktop_ui_object<'js>(ctx: &Ctx<'js>, plugin: &str) -> rquickjs::Result<
          add_header_button(&ctx, &header_owner, &options)
       })?,
    )?;
-   #[cfg(target_os = "macos")]
-   {
-      let composer_owner = plugin.to_owned();
-      ui.set(
-         "addComposerButton",
-         Function::new(ctx.clone(), move |ctx: Ctx<'js>, options: Object<'js>| {
-            add_composer_button(&ctx, &composer_owner, &options)
-         })?,
-      )?;
-   }
-   for slot_fn in [
-      #[cfg(not(target_os = "macos"))]
+   let composer_owner = plugin.to_owned();
+   ui.set(
       "addComposerButton",
+      Function::new(ctx.clone(), move |ctx: Ctx<'js>, options: Object<'js>| {
+         add_composer_button(&ctx, &composer_owner, &options)
+      })?,
+   )?;
+   for slot_fn in [
       "addProfileSection",
       "patchProps",
       "onNode",

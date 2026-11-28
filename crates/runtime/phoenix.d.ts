@@ -1476,7 +1476,8 @@ declare namespace Phoenix {
     /// member list button (where Discord shows one), with `label` as its tooltip and `icon` mapped
     /// to Mana's icon of that name (`res://ic_mana_panel_open` is `PanelOpen`); `tint` is ignored.
     addHeaderButton(options: ButtonOptions): ButtonRemover;
-    /// In the message box, left of the emoji button.
+    /// In the message box, left of the emoji button. On Desktop Phoenix, a button labeled `label`
+    /// left of the chat bar, drawn as the primary button while `tint` is set; `icon` is ignored.
     addComposerButton(options: ButtonOptions): ButtonRemover;
     /// A line under each message's content, or after its timestamp with `placement: "header"`.
     /// It runs once per message and place, and the result is kept until `update`.

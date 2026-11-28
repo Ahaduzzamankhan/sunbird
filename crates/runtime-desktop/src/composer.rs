@@ -1,6 +1,6 @@
 //! The composer's Nitro gift button, which `phoenix.ui.hide("composer.gift")`
-//! leaves out, and on macOS `phoenix.ui.addComposerButton`'s buttons, drawn
-//! ahead of the chat bar's own through a detour on the bar's render.
+//! leaves out, and `phoenix.ui.addComposerButton`'s buttons, drawn ahead of
+//! the chat bar's own through a detour on the bar's render.
 
 use std::sync::{
    Mutex,
@@ -87,7 +87,6 @@ pub fn hide_gift(hide: bool) -> bool {
    true
 }
 
-#[cfg(target_os = "macos")]
 pub mod buttons {
    use std::{
       ffi::c_void,
@@ -176,7 +175,8 @@ pub mod buttons {
          },
       };
       // SAFETY: runs from `prepare` before Discord's threads, and `detour` has
-      // the render's signature, which returns through `x8` on both sides.
+      // the render's signature on every desktop, five arguments and an
+      // `AnyElement` returned through the return slot.
       let Some(orig) = (unsafe {
          crate::hook::<RenderFn>(
             image,

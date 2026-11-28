@@ -77,7 +77,6 @@ pub struct Desktop<'js> {
    /// `phoenix.ui.addHeaderButton` handlers by id and plugin.
    pub header_buttons:   RefCell<Vec<(u64, String, Function<'js>)>>,
    /// `phoenix.ui.addComposerButton` presses by id and plugin.
-   #[cfg(target_os = "macos")]
    pub composer_buttons: RefCell<Vec<(u64, String, Function<'js>)>>,
    /// `phoenix.ui.addShortcut` handlers by id and plugin.
    pub shortcuts:        RefCell<Vec<(u64, String, Shortcut, Function<'js>)>>,
@@ -195,7 +194,6 @@ pub fn unload(ctx: &Ctx<'_>, name: &str) {
          !held
       });
 
-   #[cfg(target_os = "macos")]
    ui::unload_composer_buttons(&registry, name);
 
    registry
