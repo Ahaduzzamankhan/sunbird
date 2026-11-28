@@ -22,6 +22,7 @@ use std::{
    },
 };
 
+use iced_x86::Mnemonic;
 use phoenix_hook::{
    image::Image,
    pattern::Pattern,
@@ -35,6 +36,13 @@ use phoenix_hook::{
 
 use crate::{
    Found,
+   index::{
+      Func,
+      Index,
+      Native,
+      Op,
+      Step,
+   },
    one,
 };
 
@@ -903,32 +911,31 @@ const PENDING_TAB: &[u8] = b"FRIENDS_SECTION_PENDING";
 /// `out[1]`, and shows the tab while `out[1..=4]` adds up to more than 0. It is
 /// what the page, which loads the tab's label, calls that switches on the
 /// relationship type.
-pub fn relationship_counts(image: &Image<'_>) -> Found<usize> {
-   let mut counts = image
-      .find_bytes(PENDING_TAB)
-      .into_iter()
-      .flat_map(|at| lea_refs(image, at))
-      .filter_map(|lea| image.function_bounds(lea))
-      .flat_map(|(start, end)| calls_in(image, start, end - start))
-      .map(|(_, callee)| callee)
-      .filter(|&func| sorts_relationships(image, func))
+pub fn relationship_counts(ix: &Index<'_>) -> Found<usize> {
+   let mut counts = ix
+      .literal(PENDING_TAB)
+      .iter()
+      .flat_map(Func::calls)
+      .filter(|&callee| {
+         ix.func(callee)
+            .is_ok_and(|func| sorts_relationships(&func.steps()))
+      })
       .collect::<Vec<_>>();
    counts.sort_unstable();
    counts.dedup();
    one("relationship counts", &counts)
 }
 
-/// Whether `func` switches on a relationship type, 1 to 4, through a jump
-/// table: `dec r; cmp r,3; ja`.
-fn sorts_relationships(image: &Image<'_>, func: usize) -> bool {
-   function_code(image, func, "").is_ok_and(|code| {
-      phoenix_hook::x86::disasm(code, func, usize::MAX)
-         .windows(3)
-         .any(|lines| {
-            lines[0].text.strip_prefix("dec ").is_some_and(|reg| {
-               lines[1].text == format!("cmp {reg},3") && lines[2].text.starts_with("ja ")
-            })
-         })
+/// Whether `steps` switch on a relationship type, 1 to 4, through a jump table:
+/// `dec r; cmp r,3; ja`.
+fn sorts_relationships(steps: &[Step]) -> bool {
+   steps.windows(3).any(|run| {
+      let Op::Cmp { reg, value: 3 } = run[1].op else {
+         return false;
+      };
+      matches!(run[0].native, Native::X86(Mnemonic::Dec))
+         && run[0].writes == 1 << reg
+         && matches!(run[2].native, Native::X86(Mnemonic::Ja))
    })
 }
 

@@ -260,7 +260,7 @@ pub fn prepare() -> Result<(), Error> {
       feature("headers", || headers::install(&image, header));
       feature("message", || message::install(&image));
       #[cfg(target_arch = "x86_64")]
-      feature("counts", || counts::install(&image));
+      feature("counts", || counts::install(&image, &ix));
    } else {
       #[cfg(target_os = "macos")]
       feature("headers", || headers::arm64::install(&image));

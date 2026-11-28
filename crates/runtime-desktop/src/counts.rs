@@ -30,6 +30,7 @@ use phoenix_sigs::{
       HookPoint,
       MESSAGE_REQUESTS_BADGE,
    },
+   index::Index,
 };
 
 /// The DM list's row badge, `fn(out, id: &str, count: u32, _, _) -> out`.
@@ -81,7 +82,7 @@ impl FromStr for Count {
 
 /// Hooks what draws and computes the counts from [`crate::prepare`], before
 /// Discord's threads run.
-pub fn install(image: &Image<'static>) {
+pub fn install(image: &Image<'static>, ix: &Index<'_>) {
    let found = match desktop::pending_counts(image) {
       Ok(found) => found,
       Err(err) => {
@@ -128,7 +129,7 @@ pub fn install(image: &Image<'static>) {
    if let Some(original) = unsafe {
       hook(
          image,
-         desktop::relationship_counts(image),
+         desktop::relationship_counts(ix),
          tally as *const () as usize,
       )
    } {

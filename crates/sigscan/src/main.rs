@@ -579,7 +579,7 @@ fn check(
          );
          report(
             "relationship counts",
-            desktop::relationship_counts(image).and_then(moved),
+            desktop::relationship_counts(ix).and_then(moved),
          );
          let json = desktop::message_json(image);
          report(
